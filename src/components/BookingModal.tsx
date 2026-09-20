@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Calendar, Clock, User, Phone, ShieldAlert, CheckCircle2, Stethoscope, AlertCircle } from 'lucide-react';
 import { Doctor } from '../types';
 import { realtimeDb } from '../services/realtimeDb';
+import { userAuth } from '../services/userAuth';
 
 interface Props {
   doctor: Doctor;
@@ -12,8 +13,8 @@ interface Props {
 export const BookingModal: React.FC<Props> = ({ doctor, onClose, onSuccess }) => {
   const todayStr = new Date().toISOString().split('T')[0];
 
-  const [patientName, setPatientName] = useState('');
-  const [patientPhone, setPatientPhone] = useState('');
+  const [patientName, setPatientName] = useState(() => userAuth.getUserName());
+  const [patientPhone, setPatientPhone] = useState(() => userAuth.getUserPhone());
   const [patientAge, setPatientAge] = useState('28');
   const [patientGender, setPatientGender] = useState<'Male' | 'Female' | 'Other'>('Male');
   const [bookingDate, setBookingDate] = useState(todayStr);

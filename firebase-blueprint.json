@@ -24,6 +24,7 @@
       "id": "appointments",
       "description": "Patient OPD bookings with manual token assignment",
       "fields": {
+        "userId": { "type": "string" },
         "patientName": { "type": "string" },
         "patientPhone": { "type": "string" },
         "patientAge": { "type": "number" },
@@ -46,6 +47,7 @@
       "id": "medicine_orders",
       "description": "Prescription and medicine home delivery orders",
       "fields": {
+        "userId": { "type": "string" },
         "patientName": { "type": "string" },
         "patientPhone": { "type": "string" },
         "address": { "type": "string" },
@@ -60,6 +62,7 @@
       "id": "home_visits",
       "description": "Doctor home visit service requests",
       "fields": {
+        "userId": { "type": "string" },
         "patientName": { "type": "string" },
         "patientPhone": { "type": "string" },
         "address": { "type": "string" },
@@ -90,6 +93,7 @@
       "id": "lab_bookings",
       "description": "Diagnostic lab test bookings",
       "fields": {
+        "userId": { "type": "string" },
         "testId": { "type": "string" },
         "testTitle": { "type": "string" },
         "patientName": { "type": "string" },

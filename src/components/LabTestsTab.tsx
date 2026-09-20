@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LabTest } from '../types';
 import { realtimeDb } from '../services/realtimeDb';
+import { userAuth } from '../services/userAuth';
 import { Search, FlaskConical, Home, Clock, ShieldCheck, CheckCircle2, X, AlertCircle, Sparkles } from 'lucide-react';
 
 interface Props {
@@ -15,8 +16,8 @@ export const LabTestsTab: React.FC<Props> = ({ labTests, onBookingSuccess }) => 
 
   // Booking form states
   const [bookingType, setBookingType] = useState<'Home Sample Collection' | 'Visit Lab'>('Home Sample Collection');
-  const [patientName, setPatientName] = useState('');
-  const [patientPhone, setPatientPhone] = useState('');
+  const [patientName, setPatientName] = useState(() => userAuth.getUserName());
+  const [patientPhone, setPatientPhone] = useState(() => userAuth.getUserPhone());
   const [address, setAddress] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [timeSlot, setTimeSlot] = useState('08:00 AM - 09:00 AM');

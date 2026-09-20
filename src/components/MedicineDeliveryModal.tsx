@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Upload, CheckCircle2, AlertCircle, ShoppingBag, Truck, FileText, Image as ImageIcon } from 'lucide-react';
 import { realtimeDb } from '../services/realtimeDb';
+import { userAuth } from '../services/userAuth';
 
 interface MedicineDeliveryModalProps {
   onClose: () => void;
@@ -13,8 +14,8 @@ export const MedicineDeliveryModal: React.FC<MedicineDeliveryModalProps> = ({
   onSuccess,
   deliveryFee
 }) => {
-  const [patientName, setPatientName] = useState('');
-  const [patientPhone, setPatientPhone] = useState('');
+  const [patientName, setPatientName] = useState(() => userAuth.getUserName());
+  const [patientPhone, setPatientPhone] = useState(() => userAuth.getUserPhone());
   const [address, setAddress] = useState('');
   const [medicinesList, setMedicinesList] = useState('');
   const [prescriptionImage, setPrescriptionImage] = useState<string | null>(null);

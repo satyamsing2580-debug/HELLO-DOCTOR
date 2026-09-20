@@ -11,12 +11,14 @@ import { StaffLoginModal } from './components/StaffLoginModal';
 import { GroupAdminDashboard } from './components/GroupAdminDashboard';
 import { CompounderDashboard } from './components/CompounderDashboard';
 import { sirenManager } from './services/audioSiren';
+import { userAuth } from './services/userAuth';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [currentRole, setCurrentRole] = useState<UserRole>('patient');
   const [compounderDoctorName, setCompounderDoctorName] = useState<string>('');
   const [isStaffLoginOpen, setIsStaffLoginOpen] = useState(false);
+  const [userPhoneState, setUserPhoneState] = useState<string>(() => userAuth.getUserPhone());
 
   // Real-time synced data state
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -28,30 +30,15 @@ export default function App() {
   const [appSettings, setAppSettings] = useState<AppSettings>(realtimeDb.getAppSettings());
   const [hasActiveAlarm, setHasActiveAlarm] = useState(false);
 
-  // Establish Real-time Subscriptions (onSnapshot equivalent with Firestore)
+  // Establish Real-time Subscriptions (Strict data isolation for patients)
   useEffect(() => {
+    // Doctors catalog, Lab Test catalog, App Settings & Siren are always needed
     const unsubDoctors = realtimeDb.subscribeDoctors((newDocs) => {
       setDoctors(newDocs);
     });
 
-    const unsubAppointments = realtimeDb.subscribeAppointments((newApts) => {
-      setAppointments(newApts);
-    });
-
     const unsubLabTests = realtimeDb.subscribeLabTests((newLabs) => {
       setLabTests(newLabs);
-    });
-
-    const unsubLabBookings = realtimeDb.subscribeLabBookings((newBookings) => {
-      setLabBookings(newBookings);
-    });
-
-    const unsubMedicineOrders = realtimeDb.subscribeMedicineOrders((newOrders) => {
-      setMedicineOrders(newOrders);
-    });
-
-    const unsubHomeVisits = realtimeDb.subscribeHomeVisits((newVisits) => {
-      setHomeVisits(newVisits);
     });
 
     const unsubAppSettings = realtimeDb.subscribeAppSettings((newSettings) => {
@@ -62,16 +49,58 @@ export default function App() {
       setHasActiveAlarm(active);
     });
 
+    let unsubApts: () => void;
+    let unsubMeds: () => void;
+    let unsubVisits: () => void;
+    let unsubLabs: () => void;
+
+    if (currentRole === 'patient') {
+      // Patient data fetch query: filtered directly by user phone or unique User ID
+      unsubApts = realtimeDb.subscribeUserAppointments(userPhoneState, userAuth.getUserId(), (userApts) => {
+        setAppointments(userApts);
+      });
+      unsubMeds = realtimeDb.subscribeUserMedicineOrders(userPhoneState, userAuth.getUserId(), (userMeds) => {
+        setMedicineOrders(userMeds);
+      });
+      unsubVisits = realtimeDb.subscribeUserHomeVisits(userPhoneState, userAuth.getUserId(), (userVisits) => {
+        setHomeVisits(userVisits);
+      });
+      unsubLabs = realtimeDb.subscribeUserLabBookings(userPhoneState, userAuth.getUserId(), (userLabs) => {
+        setLabBookings(userLabs);
+      });
+    } else {
+      // Staff (Group Admin / Compounder) accesses global hospital bookings
+      unsubApts = realtimeDb.subscribeAppointments((allApts) => {
+        setAppointments(allApts);
+      });
+      unsubMeds = realtimeDb.subscribeMedicineOrders((allMeds) => {
+        setMedicineOrders(allMeds);
+      });
+      unsubVisits = realtimeDb.subscribeHomeVisits((allVisits) => {
+        setHomeVisits(allVisits);
+      });
+      unsubLabs = realtimeDb.subscribeLabBookings((allLabs) => {
+        setLabBookings(allLabs);
+      });
+    }
+
     return () => {
       unsubDoctors();
-      unsubAppointments();
       unsubLabTests();
-      unsubLabBookings();
-      unsubMedicineOrders();
-      unsubHomeVisits();
       unsubAppSettings();
       unsubAlarm();
+      unsubApts?.();
+      unsubMeds?.();
+      unsubVisits?.();
+      unsubLabs?.();
     };
+  }, [currentRole, userPhoneState]);
+
+  // Subscribe to patient identity changes
+  useEffect(() => {
+    return userAuth.subscribe((u) => {
+      setUserPhoneState(u.phone);
+    });
   }, []);
 
   const handleAcknowledgeAlarm = () => {
@@ -90,11 +119,11 @@ export default function App() {
     setActiveTab('home');
   };
 
-  // Active bookings count (confirmed or pending)
+  // Active bookings count strictly for the current user (confirmed or pending)
   const activeBookingCount = 
-    appointments.filter((a) => a.status === 'Confirmed' || a.status === 'Pending').length +
-    medicineOrders.filter((m) => m.status !== 'Delivered' && m.status !== 'Cancelled').length +
-    homeVisits.filter((h) => h.status !== 'Completed' && h.status !== 'Cancelled').length;
+    appointments.filter((a) => userAuth.isUserBooking(a, userPhoneState) && (a.status === 'Confirmed' || a.status === 'Pending')).length +
+    medicineOrders.filter((m) => userAuth.isUserBooking(m, userPhoneState) && m.status !== 'Delivered' && m.status !== 'Cancelled').length +
+    homeVisits.filter((h) => userAuth.isUserBooking(h, userPhoneState) && h.status !== 'Completed' && h.status !== 'Cancelled').length;
 
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center text-slate-900 font-sans">
@@ -152,6 +181,11 @@ export default function App() {
                   medicineOrders={medicineOrders}
                   homeVisits={homeVisits}
                   onNavigateToHome={() => setActiveTab('home')}
+                  currentUserPhone={userPhoneState}
+                  onUpdateUserPhone={(phone) => {
+                    userAuth.setUserIdentity(phone);
+                    setUserPhoneState(phone);
+                  }}
                 />
               )}
 

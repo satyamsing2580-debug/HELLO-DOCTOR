@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Home, Calendar, Clock, AlertCircle, CheckCircle2, UserCheck, Stethoscope } from 'lucide-react';
 import { realtimeDb } from '../services/realtimeDb';
+import { userAuth } from '../services/userAuth';
 
 interface HomeVisitModalProps {
   onClose: () => void;
@@ -32,8 +33,8 @@ export const HomeVisitModal: React.FC<HomeVisitModalProps> = ({
   onSuccess,
   visitFee
 }) => {
-  const [patientName, setPatientName] = useState('');
-  const [patientPhone, setPatientPhone] = useState('');
+  const [patientName, setPatientName] = useState(() => userAuth.getUserName());
+  const [patientPhone, setPatientPhone] = useState(() => userAuth.getUserPhone());
   const [address, setAddress] = useState('');
   const [preferredDate, setPreferredDate] = useState(new Date().toISOString().split('T')[0]);
   const [preferredTime, setPreferredTime] = useState(TIME_SLOTS[0]);

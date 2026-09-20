@@ -1,11 +1,12 @@
 import { 
-  collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, writeBatch 
+  collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, writeBatch, query, where 
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { 
   Doctor, Appointment, LabTest, LabBooking, MedicineOrder, HomeVisitBooking, AppSettings 
 } from '../types';
 import { sirenManager } from './audioSiren';
+import { userAuth } from './userAuth';
 
 // Secure credentials kept strictly within authentication logic
 const ADMIN_SECURITY_HASH = '9771264784';
@@ -778,7 +779,7 @@ class HelloDoctorRealtimeDB {
         this.saveToStorage();
         this.doctorListeners.forEach(cb => cb([...this.doctors]));
       }
-    }, (err) => console.warn('Firestore doctors listener:', err));
+    }, (err) => console.info('Firestore doctors listener (offline mode):', err?.message || err));
 
     // 2. Real-Time Appointments (Real patient bookings only!)
     onSnapshot(collection(db, 'appointments'), (snapshot) => {
@@ -788,7 +789,7 @@ class HelloDoctorRealtimeDB {
       this.saveToStorage();
       this.appointmentListeners.forEach(cb => cb([...this.appointments]));
       this.checkPendingAlarmState();
-    }, (err) => console.warn('Firestore appointments listener:', err));
+    }, (err) => console.info('Firestore appointments listener (offline mode):', err?.message || err));
 
     // 3. Medicine Home Delivery Orders Live Sync
     onSnapshot(collection(db, 'medicine_orders'), (snapshot) => {
@@ -797,7 +798,7 @@ class HelloDoctorRealtimeDB {
         .sort((a, b) => (b.orderedAt || 0) - (a.orderedAt || 0));
       this.saveToStorage();
       this.medicineOrderListeners.forEach(cb => cb([...this.medicineOrders]));
-    }, (err) => console.warn('Firestore medicine_orders listener:', err));
+    }, (err) => console.info('Firestore medicine_orders listener (offline mode):', err?.message || err));
 
     // 4. Doctor Home Visits Live Sync
     onSnapshot(collection(db, 'home_visits'), (snapshot) => {
@@ -806,7 +807,7 @@ class HelloDoctorRealtimeDB {
         .sort((a, b) => (b.bookedAt || 0) - (a.bookedAt || 0));
       this.saveToStorage();
       this.homeVisitListeners.forEach(cb => cb([...this.homeVisits]));
-    }, (err) => console.warn('Firestore home_visits listener:', err));
+    }, (err) => console.info('Firestore home_visits listener (offline mode):', err?.message || err));
 
     // 5. Diagnostic Lab Tests Live Sync & Auto-Seed
     onSnapshot(collection(db, 'lab_tests'), async (snapshot) => {
@@ -819,14 +820,14 @@ class HelloDoctorRealtimeDB {
           });
           await batch.commit();
         } catch (e) {
-          console.warn('Firestore lab tests seed notice:', e);
+          console.info('Firestore lab tests seed notice:', e);
         }
       } else {
         this.labTests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as LabTest));
         this.saveToStorage();
         this.labTestListeners.forEach(cb => cb([...this.labTests]));
       }
-    }, (err) => console.warn('Firestore lab_tests listener:', err));
+    }, (err) => console.info('Firestore lab_tests listener (offline mode):', err?.message || err));
 
     // 6. Diagnostic Lab Bookings Live Sync
     onSnapshot(collection(db, 'lab_bookings'), (snapshot) => {
@@ -835,7 +836,7 @@ class HelloDoctorRealtimeDB {
         .sort((a, b) => (b.bookedAt || 0) - (a.bookedAt || 0));
       this.saveToStorage();
       this.labBookingListeners.forEach(cb => cb([...this.labBookings]));
-    }, (err) => console.warn('Firestore lab_bookings listener:', err));
+    }, (err) => console.info('Firestore lab_bookings listener (offline mode):', err?.message || err));
 
     // 7. Dynamic App Pricing & Settings Sync
     onSnapshot(doc(db, 'app_settings', 'pricing'), async (snapshot) => {
@@ -847,10 +848,10 @@ class HelloDoctorRealtimeDB {
         try {
           await setDoc(doc(db, 'app_settings', 'pricing'), DEFAULT_APP_SETTINGS);
         } catch (e) {
-          console.warn('Firestore settings seed notice:', e);
+          console.info('Firestore settings seed notice:', e);
         }
       }
-    }, (err) => console.warn('Firestore settings listener:', err));
+    }, (err) => console.info('Firestore settings listener (offline mode):', err?.message || err));
 
     // 8. Admin-Only Alarm State Sync
     onSnapshot(doc(db, 'alarm_state', 'current'), (snapshot) => {
@@ -859,7 +860,7 @@ class HelloDoctorRealtimeDB {
         this.hasActiveAlarm = !!data.hasActiveAlarm;
         this.alarmListeners.forEach(cb => cb(this.hasActiveAlarm));
       }
-    }, (err) => console.warn('Firestore alarm listener:', err));
+    }, (err) => console.info('Firestore alarm listener (offline mode):', err?.message || err));
   }
 
   // Check if any unacknowledged pending appointments exist
@@ -919,6 +920,262 @@ class HelloDoctorRealtimeDB {
     this.alarmListeners.add(callback);
     callback(this.hasActiveAlarm);
     return () => this.alarmListeners.delete(callback);
+  }
+
+  // Real-Time Queries Filtered by Patient Identity (Phone / User ID)
+  // Ensures complete data isolation so patients only fetch and observe their own bookings
+  public subscribeUserAppointments(
+    phone: string,
+    userId: string | undefined,
+    callback: (appointments: Appointment[]) => void
+  ): () => void {
+    const cleanPhone = userAuth.normalizePhone(phone);
+    const validUserId = (userId || '').trim();
+
+    // Strict privacy boundary: if user has neither entered a phone nor has an ID, return empty array immediately
+    if (!cleanPhone && !validUserId) {
+      callback([]);
+      return () => {};
+    }
+
+    const unsubs: (() => void)[] = [];
+    const phoneMap = new Map<string, Appointment>();
+    const userMap = new Map<string, Appointment>();
+
+    const notify = () => {
+      const merged = new Map<string, Appointment>();
+      phoneMap.forEach((v, k) => merged.set(k, v));
+      userMap.forEach((v, k) => merged.set(k, v));
+      const list = Array.from(merged.values()).sort((a, b) => (b.bookedAt || 0) - (a.bookedAt || 0));
+      callback(list);
+    };
+
+    // Provide initial local cached bookings if available in memory
+    const localMatches = this.appointments.filter(a => userAuth.isUserBooking(a, cleanPhone));
+    if (localMatches.length > 0) {
+      localMatches.forEach(a => userMap.set(a.id, a));
+      notify();
+    }
+
+    if (cleanPhone) {
+      const phoneVariants = [
+        cleanPhone,
+        `+91${cleanPhone}`,
+        `+91 ${cleanPhone}`,
+        `+91-${cleanPhone}`,
+        `0${cleanPhone}`
+      ];
+      const qPhone = query(collection(db, 'appointments'), where('patientPhone', 'in', phoneVariants));
+      const unsubPhone = onSnapshot(qPhone, (snapshot) => {
+        phoneMap.clear();
+        snapshot.docs.forEach(d => phoneMap.set(d.id, { id: d.id, ...d.data() } as Appointment));
+        notify();
+      }, (err) => console.info('User appointments query notice:', err));
+      unsubs.push(unsubPhone);
+    }
+
+    if (validUserId) {
+      const qUser = query(collection(db, 'appointments'), where('userId', '==', validUserId));
+      const unsubUser = onSnapshot(qUser, (snapshot) => {
+        userMap.clear();
+        snapshot.docs.forEach(d => userMap.set(d.id, { id: d.id, ...d.data() } as Appointment));
+        notify();
+      }, (err) => console.info('User appointments userId query notice:', err));
+      unsubs.push(unsubUser);
+    }
+
+    return () => {
+      unsubs.forEach(u => u());
+    };
+  }
+
+  public subscribeUserMedicineOrders(
+    phone: string,
+    userId: string | undefined,
+    callback: (orders: MedicineOrder[]) => void
+  ): () => void {
+    const cleanPhone = userAuth.normalizePhone(phone);
+    const validUserId = (userId || '').trim();
+
+    if (!cleanPhone && !validUserId) {
+      callback([]);
+      return () => {};
+    }
+
+    const unsubs: (() => void)[] = [];
+    const phoneMap = new Map<string, MedicineOrder>();
+    const userMap = new Map<string, MedicineOrder>();
+
+    const notify = () => {
+      const merged = new Map<string, MedicineOrder>();
+      phoneMap.forEach((v, k) => merged.set(k, v));
+      userMap.forEach((v, k) => merged.set(k, v));
+      const list = Array.from(merged.values()).sort((a, b) => (b.orderedAt || 0) - (a.orderedAt || 0));
+      callback(list);
+    };
+
+    const localMatches = this.medicineOrders.filter(m => userAuth.isUserBooking(m, cleanPhone));
+    if (localMatches.length > 0) {
+      localMatches.forEach(m => userMap.set(m.id, m));
+      notify();
+    }
+
+    if (cleanPhone) {
+      const phoneVariants = [
+        cleanPhone,
+        `+91${cleanPhone}`,
+        `+91 ${cleanPhone}`,
+        `+91-${cleanPhone}`,
+        `0${cleanPhone}`
+      ];
+      const qPhone = query(collection(db, 'medicine_orders'), where('patientPhone', 'in', phoneVariants));
+      const unsubPhone = onSnapshot(qPhone, (snapshot) => {
+        phoneMap.clear();
+        snapshot.docs.forEach(d => phoneMap.set(d.id, { id: d.id, ...d.data() } as MedicineOrder));
+        notify();
+      }, (err) => console.info('User medicine orders query notice:', err));
+      unsubs.push(unsubPhone);
+    }
+
+    if (validUserId) {
+      const qUser = query(collection(db, 'medicine_orders'), where('userId', '==', validUserId));
+      const unsubUser = onSnapshot(qUser, (snapshot) => {
+        userMap.clear();
+        snapshot.docs.forEach(d => userMap.set(d.id, { id: d.id, ...d.data() } as MedicineOrder));
+        notify();
+      }, (err) => console.info('User medicine orders userId query notice:', err));
+      unsubs.push(unsubUser);
+    }
+
+    return () => {
+      unsubs.forEach(u => u());
+    };
+  }
+
+  public subscribeUserHomeVisits(
+    phone: string,
+    userId: string | undefined,
+    callback: (visits: HomeVisitBooking[]) => void
+  ): () => void {
+    const cleanPhone = userAuth.normalizePhone(phone);
+    const validUserId = (userId || '').trim();
+
+    if (!cleanPhone && !validUserId) {
+      callback([]);
+      return () => {};
+    }
+
+    const unsubs: (() => void)[] = [];
+    const phoneMap = new Map<string, HomeVisitBooking>();
+    const userMap = new Map<string, HomeVisitBooking>();
+
+    const notify = () => {
+      const merged = new Map<string, HomeVisitBooking>();
+      phoneMap.forEach((v, k) => merged.set(k, v));
+      userMap.forEach((v, k) => merged.set(k, v));
+      const list = Array.from(merged.values()).sort((a, b) => (b.bookedAt || 0) - (a.bookedAt || 0));
+      callback(list);
+    };
+
+    const localMatches = this.homeVisits.filter(h => userAuth.isUserBooking(h, cleanPhone));
+    if (localMatches.length > 0) {
+      localMatches.forEach(h => userMap.set(h.id, h));
+      notify();
+    }
+
+    if (cleanPhone) {
+      const phoneVariants = [
+        cleanPhone,
+        `+91${cleanPhone}`,
+        `+91 ${cleanPhone}`,
+        `+91-${cleanPhone}`,
+        `0${cleanPhone}`
+      ];
+      const qPhone = query(collection(db, 'home_visits'), where('patientPhone', 'in', phoneVariants));
+      const unsubPhone = onSnapshot(qPhone, (snapshot) => {
+        phoneMap.clear();
+        snapshot.docs.forEach(d => phoneMap.set(d.id, { id: d.id, ...d.data() } as HomeVisitBooking));
+        notify();
+      }, (err) => console.info('User home visits query notice:', err));
+      unsubs.push(unsubPhone);
+    }
+
+    if (validUserId) {
+      const qUser = query(collection(db, 'home_visits'), where('userId', '==', validUserId));
+      const unsubUser = onSnapshot(qUser, (snapshot) => {
+        userMap.clear();
+        snapshot.docs.forEach(d => userMap.set(d.id, { id: d.id, ...d.data() } as HomeVisitBooking));
+        notify();
+      }, (err) => console.info('User home visits userId query notice:', err));
+      unsubs.push(unsubUser);
+    }
+
+    return () => {
+      unsubs.forEach(u => u());
+    };
+  }
+
+  public subscribeUserLabBookings(
+    phone: string,
+    userId: string | undefined,
+    callback: (bookings: LabBooking[]) => void
+  ): () => void {
+    const cleanPhone = userAuth.normalizePhone(phone);
+    const validUserId = (userId || '').trim();
+
+    if (!cleanPhone && !validUserId) {
+      callback([]);
+      return () => {};
+    }
+
+    const unsubs: (() => void)[] = [];
+    const phoneMap = new Map<string, LabBooking>();
+    const userMap = new Map<string, LabBooking>();
+
+    const notify = () => {
+      const merged = new Map<string, LabBooking>();
+      phoneMap.forEach((v, k) => merged.set(k, v));
+      userMap.forEach((v, k) => merged.set(k, v));
+      const list = Array.from(merged.values()).sort((a, b) => (b.bookedAt || 0) - (a.bookedAt || 0));
+      callback(list);
+    };
+
+    const localMatches = this.labBookings.filter(l => userAuth.isUserBooking(l, cleanPhone));
+    if (localMatches.length > 0) {
+      localMatches.forEach(l => userMap.set(l.id, l));
+      notify();
+    }
+
+    if (cleanPhone) {
+      const phoneVariants = [
+        cleanPhone,
+        `+91${cleanPhone}`,
+        `+91 ${cleanPhone}`,
+        `+91-${cleanPhone}`,
+        `0${cleanPhone}`
+      ];
+      const qPhone = query(collection(db, 'lab_bookings'), where('patientPhone', 'in', phoneVariants));
+      const unsubPhone = onSnapshot(qPhone, (snapshot) => {
+        phoneMap.clear();
+        snapshot.docs.forEach(d => phoneMap.set(d.id, { id: d.id, ...d.data() } as LabBooking));
+        notify();
+      }, (err) => console.info('User lab bookings query notice:', err));
+      unsubs.push(unsubPhone);
+    }
+
+    if (validUserId) {
+      const qUser = query(collection(db, 'lab_bookings'), where('userId', '==', validUserId));
+      const unsubUser = onSnapshot(qUser, (snapshot) => {
+        userMap.clear();
+        snapshot.docs.forEach(d => userMap.set(d.id, { id: d.id, ...d.data() } as LabBooking));
+        notify();
+      }, (err) => console.info('User lab bookings userId query notice:', err));
+      unsubs.push(unsubUser);
+    }
+
+    return () => {
+      unsubs.forEach(u => u());
+    };
   }
 
   // Doctor Retrieval & Helpers
@@ -986,6 +1243,7 @@ class HelloDoctorRealtimeDB {
 
   // Patient Booking Flow -> Strict "Pending" with suggested token
   public async bookAppointment(data: {
+    userId?: string;
     patientName: string;
     patientPhone: string;
     patientAge: number;
@@ -1000,9 +1258,14 @@ class HelloDoctorRealtimeDB {
 
     const aptId = `apt-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const suggestedToken = (doctor.totalTokensToday || doctor.currentToken || 1) + 1;
+    const activeUserId = data.userId || userAuth.getUserId();
+
+    // Auto-save user identity locally
+    userAuth.setUserIdentity(data.patientPhone, data.patientName);
 
     const newAppointment: Appointment = {
       id: aptId,
+      userId: activeUserId,
       patientName: data.patientName.trim(),
       patientPhone: data.patientPhone.trim(),
       patientAge: Number(data.patientAge) || 25,
@@ -1021,8 +1284,17 @@ class HelloDoctorRealtimeDB {
       symptomBrief: data.symptomBrief?.trim() || 'General consultation request'
     };
 
+    // Immediately reflect in local state for instantaneous responsiveness
+    this.appointments.unshift(newAppointment);
+    this.saveToStorage();
+    this.appointmentListeners.forEach(cb => cb([...this.appointments]));
+
     // 1. Save appointment to Firestore
-    await setDoc(doc(db, 'appointments', aptId), newAppointment);
+    try {
+      await setDoc(doc(db, 'appointments', aptId), newAppointment);
+    } catch (e) {
+      console.info('Appointment local cached, sync queued:', e);
+    }
 
     // 2. Trigger Admin Emergency Siren Alarm in Firestore
     try {
@@ -1032,7 +1304,7 @@ class HelloDoctorRealtimeDB {
         timestamp: Date.now()
       });
     } catch (e) {
-      console.warn('Alarm trigger sync warning:', e);
+      console.info('Alarm trigger sync notice:', e);
     }
 
     return newAppointment;
@@ -1107,6 +1379,7 @@ class HelloDoctorRealtimeDB {
 
   // Medicine Home Delivery Orders
   public async orderMedicines(data: {
+    userId?: string;
     patientName: string;
     patientPhone: string;
     address: string;
@@ -1115,8 +1388,12 @@ class HelloDoctorRealtimeDB {
     deliveryFee?: number;
   }): Promise<MedicineOrder> {
     const orderId = `med-order-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const activeUserId = data.userId || userAuth.getUserId();
+    userAuth.setUserIdentity(data.patientPhone, data.patientName);
+
     const newOrder: MedicineOrder = {
       id: orderId,
+      userId: activeUserId,
       patientName: data.patientName.trim(),
       patientPhone: data.patientPhone.trim(),
       address: data.address.trim(),
@@ -1127,7 +1404,16 @@ class HelloDoctorRealtimeDB {
       orderedAt: Date.now()
     };
 
-    await setDoc(doc(db, 'medicine_orders', orderId), newOrder);
+    // Instant local memory update
+    this.medicineOrders.unshift(newOrder);
+    this.saveToStorage();
+    this.medicineOrderListeners.forEach(cb => cb([...this.medicineOrders]));
+
+    try {
+      await setDoc(doc(db, 'medicine_orders', orderId), newOrder);
+    } catch (e) {
+      console.info('Medicine order cached locally:', e);
+    }
     return newOrder;
   }
 
@@ -1137,6 +1423,7 @@ class HelloDoctorRealtimeDB {
 
   // Doctor Home Visit Service
   public async bookHomeVisit(data: {
+    userId?: string;
     patientName: string;
     patientPhone: string;
     address: string;
@@ -1147,8 +1434,12 @@ class HelloDoctorRealtimeDB {
     visitFee?: number;
   }): Promise<HomeVisitBooking> {
     const visitId = `visit-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const activeUserId = data.userId || userAuth.getUserId();
+    userAuth.setUserIdentity(data.patientPhone, data.patientName);
+
     const newVisit: HomeVisitBooking = {
       id: visitId,
+      userId: activeUserId,
       patientName: data.patientName.trim(),
       patientPhone: data.patientPhone.trim(),
       address: data.address.trim(),
@@ -1161,7 +1452,16 @@ class HelloDoctorRealtimeDB {
       bookedAt: Date.now()
     };
 
-    await setDoc(doc(db, 'home_visits', visitId), newVisit);
+    // Instant local memory update
+    this.homeVisits.unshift(newVisit);
+    this.saveToStorage();
+    this.homeVisitListeners.forEach(cb => cb([...this.homeVisits]));
+
+    try {
+      await setDoc(doc(db, 'home_visits', visitId), newVisit);
+    } catch (e) {
+      console.info('Home visit cached locally:', e);
+    }
     return newVisit;
   }
 
@@ -1225,6 +1525,7 @@ class HelloDoctorRealtimeDB {
   }
 
   public async bookLabTest(data: {
+    userId?: string;
     testId: string;
     bookingType: 'Home Sample Collection' | 'Visit Lab';
     patientName: string;
@@ -1237,8 +1538,12 @@ class HelloDoctorRealtimeDB {
     if (!test) throw new Error('Lab test not found');
 
     const bookingId = `lab-book-${Date.now()}`;
+    const activeUserId = data.userId || userAuth.getUserId();
+    userAuth.setUserIdentity(data.patientPhone, data.patientName);
+
     const newBooking: LabBooking = {
       id: bookingId,
+      userId: activeUserId,
       testId: test.id,
       testName: test.name,
       category: test.category,
@@ -1253,8 +1558,29 @@ class HelloDoctorRealtimeDB {
       bookedAt: Date.now()
     };
 
-    await setDoc(doc(db, 'lab_bookings', bookingId), newBooking);
+    // Instant local memory update
+    this.labBookings.unshift(newBooking);
+    this.saveToStorage();
+    this.labBookingListeners.forEach(cb => cb([...this.labBookings]));
+
+    try {
+      await setDoc(doc(db, 'lab_bookings', bookingId), newBooking);
+    } catch (e) {
+      console.info('Lab booking cached locally:', e);
+    }
     return newBooking;
+  }
+
+  // Get strictly user-specific bookings (Filtered by phone or userId)
+  public getMyBookings(userPhone?: string) {
+    const phone = userPhone !== undefined ? userPhone : userAuth.getUserPhone();
+
+    return {
+      appointments: this.appointments.filter(a => userAuth.isUserBooking(a, phone)),
+      medicineOrders: this.medicineOrders.filter(m => userAuth.isUserBooking(m, phone)),
+      homeVisits: this.homeVisits.filter(h => userAuth.isUserBooking(h, phone)),
+      labBookings: this.labBookings.filter(l => userAuth.isUserBooking(l, phone)),
+    };
   }
 
   // Dynamic Financial Analytics

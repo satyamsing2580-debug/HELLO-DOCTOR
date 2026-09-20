@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Appointment, Doctor, LabBooking, MedicineOrder, HomeVisitBooking } from '../types';
 import { 
   CalendarCheck, Clock, CheckCircle, AlertTriangle, XCircle, Stethoscope, 
   MapPin, User, Activity, FlaskConical, Search, Sparkles, Truck, Home,
-  FileText, Phone, Eye
+  FileText, Phone, Eye, ShieldCheck, RefreshCw
 } from 'lucide-react';
+import { userAuth } from '../services/userAuth';
 
 interface Props {
   appointments: Appointment[];
@@ -13,6 +14,8 @@ interface Props {
   medicineOrders?: MedicineOrder[];
   homeVisits?: HomeVisitBooking[];
   onNavigateToHome: () => void;
+  currentUserPhone?: string;
+  onUpdateUserPhone?: (phone: string) => void;
 }
 
 export const MyBookingsTab: React.FC<Props> = ({
@@ -21,40 +24,144 @@ export const MyBookingsTab: React.FC<Props> = ({
   labBookings,
   medicineOrders = [],
   homeVisits = [],
-  onNavigateToHome
+  onNavigateToHome,
+  currentUserPhone,
+  onUpdateUserPhone
 }) => {
-  const [filterPhone, setFilterPhone] = useState('');
+  const [userPhone, setUserPhone] = useState<string>(() => currentUserPhone || userAuth.getUserPhone());
+  const [userName, setUserName] = useState<string>(() => userAuth.getUserName());
+  const [phoneInput, setPhoneInput] = useState<string>(currentUserPhone || userAuth.getUserPhone());
+  const [isChangingPhone, setIsChangingPhone] = useState<boolean>(!currentUserPhone && !userAuth.getUserPhone());
   const [activeTab, setActiveTab] = useState<'opd' | 'medicines' | 'home_visits' | 'labs'>('opd');
   const [selectedPrescriptionPreview, setSelectedPrescriptionPreview] = useState<string | null>(null);
 
-  // Filter appointments
-  const filteredAppointments = appointments.filter(apt => {
-    if (!filterPhone.trim()) return true;
-    return apt.patientPhone.includes(filterPhone.trim()) || apt.patientName.toLowerCase().includes(filterPhone.toLowerCase());
-  });
+  // Sync with userAuth service or parent props
+  useEffect(() => {
+    if (currentUserPhone) {
+      setUserPhone(currentUserPhone);
+      setPhoneInput(currentUserPhone);
+    }
+  }, [currentUserPhone]);
 
-  const filteredMedicines = medicineOrders.filter(med => {
-    if (!filterPhone.trim()) return true;
-    return med.patientPhone.includes(filterPhone.trim()) || med.patientName.toLowerCase().includes(filterPhone.toLowerCase());
-  });
+  useEffect(() => {
+    return userAuth.subscribeUser((state) => {
+      setUserPhone(state.phone);
+      setUserName(state.name);
+      if (state.phone) {
+        setPhoneInput(state.phone);
+      }
+    });
+  }, []);
 
-  const filteredVisits = homeVisits.filter(visit => {
-    if (!filterPhone.trim()) return true;
-    return visit.patientPhone.includes(filterPhone.trim()) || visit.patientName.toLowerCase().includes(filterPhone.toLowerCase());
-  });
+  const handleApplyPhone = (newPhone: string) => {
+    const clean = newPhone.replace(/\D/g, '').slice(-10);
+    if (clean.length === 10) {
+      userAuth.setUserIdentity(clean);
+      setUserPhone(clean);
+      setPhoneInput(clean);
+      setIsChangingPhone(false);
+      onUpdateUserPhone?.(clean);
+    }
+  };
 
-  const filteredLabs = labBookings.filter(lab => {
-    if (!filterPhone.trim()) return true;
-    return lab.patientPhone.includes(filterPhone.trim()) || lab.patientName.toLowerCase().includes(filterPhone.toLowerCase());
-  });
+  const activePhone = userPhone || phoneInput.trim();
+
+  // Strict separation: User only sees their own appointments, orders, visits & labs
+  const isUserBooking = (item: { userId?: string; patientPhone?: string; patientName?: string }) => {
+    return userAuth.isUserBooking(item, activePhone);
+  };
+
+  const filteredAppointments = appointments.filter(isUserBooking);
+  const filteredMedicines = medicineOrders.filter(isUserBooking);
+  const filteredVisits = homeVisits.filter(isUserBooking);
+  const filteredLabs = labBookings.filter(isUserBooking);
 
   // Doctor lookup map for live token resolution
   const doctorMap = new Map<string, Doctor>();
   doctors.forEach(d => doctorMap.set(d.id, d));
 
+  const totalUserBookings = 
+    filteredAppointments.length + 
+    filteredMedicines.length + 
+    filteredVisits.length + 
+    filteredLabs.length;
+
   return (
     <div className="pb-28 pt-2 px-4 max-w-md mx-auto space-y-4">
-      {/* Tab Switcher: 4 Healthcare Service Modules */}
+      {/* Patient Account & Privacy Header */}
+      {(!userPhone || isChangingPhone) ? (
+        <div className="bg-gradient-to-br from-sky-600 via-sky-700 to-indigo-800 rounded-2xl p-4 text-white shadow-md space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <ShieldCheck className="w-5 h-5 text-sky-200" />
+              <h3 className="font-bold text-xs uppercase tracking-wider text-sky-100">
+                Private Patient Portal
+              </h3>
+            </div>
+            {userPhone && (
+              <button 
+                onClick={() => setIsChangingPhone(false)}
+                className="text-[11px] text-sky-200 hover:text-white font-medium cursor-pointer"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-sky-100/90 leading-relaxed">
+            Enter your 10-digit mobile number to access your personal OPD token status, medicine deliveries, and lab test reports.
+          </p>
+          <div className="flex gap-2 pt-1">
+            <div className="relative flex-1">
+              <span className="absolute left-3 top-2 text-xs text-slate-500 font-bold">+91</span>
+              <input
+                type="tel"
+                maxLength={10}
+                placeholder="10-digit mobile number"
+                value={phoneInput}
+                onChange={(e) => setPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                className="w-full pl-10 pr-3 py-2 bg-white text-slate-900 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sky-300"
+              />
+            </div>
+            <button
+              onClick={() => handleApplyPhone(phoneInput)}
+              disabled={phoneInput.replace(/\D/g, '').length < 10}
+              className="px-3 py-2 bg-white text-sky-800 text-xs font-bold rounded-xl hover:bg-sky-50 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+            >
+              Verify & View
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-3 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center shrink-0">
+              <User className="w-4 h-4 text-sky-600" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center space-x-1.5">
+                <span className="text-xs font-bold text-slate-800 truncate">
+                  {userName || 'My Bookings'}
+                </span>
+                <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-1.5 py-0.2 rounded-full border border-emerald-200 shrink-0">
+                  +91 {userPhone}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500 truncate">
+                {totalUserBookings} active record{totalUserBookings === 1 ? '' : 's'} linked to your device
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setIsChangingPhone(true)}
+            className="text-[11px] text-sky-700 hover:text-sky-800 font-semibold px-2 py-1 bg-sky-50 hover:bg-sky-100 rounded-lg cursor-pointer transition-colors shrink-0 ml-2"
+          >
+            Switch
+          </button>
+        </div>
+      )}
+
+      {/* Tab Switcher: 4 Healthcare Service Modules (Strictly shows count for this user!) */}
       <div className="grid grid-cols-4 bg-slate-200/80 p-1 rounded-2xl gap-0.5 text-xs font-bold">
         <button
           onClick={() => setActiveTab('opd')}
@@ -65,7 +172,7 @@ export const MyBookingsTab: React.FC<Props> = ({
           }`}
         >
           <CalendarCheck className="w-3.5 h-3.5 text-sky-600 mb-0.5" />
-          <span className="truncate w-full text-center">OPD ({appointments.length})</span>
+          <span className="truncate w-full text-center">OPD ({filteredAppointments.length})</span>
         </button>
 
         <button
@@ -77,7 +184,7 @@ export const MyBookingsTab: React.FC<Props> = ({
           }`}
         >
           <Truck className="w-3.5 h-3.5 text-emerald-600 mb-0.5" />
-          <span className="truncate w-full text-center">Dawai ({medicineOrders.length})</span>
+          <span className="truncate w-full text-center">Dawai ({filteredMedicines.length})</span>
         </button>
 
         <button
@@ -89,7 +196,7 @@ export const MyBookingsTab: React.FC<Props> = ({
           }`}
         >
           <Home className="w-3.5 h-3.5 text-indigo-600 mb-0.5" />
-          <span className="truncate w-full text-center">Visits ({homeVisits.length})</span>
+          <span className="truncate w-full text-center">Visits ({filteredVisits.length})</span>
         </button>
 
         <button
@@ -101,28 +208,8 @@ export const MyBookingsTab: React.FC<Props> = ({
           }`}
         >
           <FlaskConical className="w-3.5 h-3.5 text-teal-600 mb-0.5" />
-          <span className="truncate w-full text-center">Labs ({labBookings.length})</span>
+          <span className="truncate w-full text-center">Labs ({filteredLabs.length})</span>
         </button>
-      </div>
-
-      {/* Phone filter input for patient lookups */}
-      <div className="relative">
-        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-        <input
-          type="text"
-          placeholder="Filter by your mobile number or name..."
-          value={filterPhone}
-          onChange={(e) => setFilterPhone(e.target.value)}
-          className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs"
-        />
-        {filterPhone && (
-          <button
-            onClick={() => setFilterPhone('')}
-            className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600 font-semibold cursor-pointer"
-          >
-            Clear
-          </button>
-        )}
       </div>
 
       {/* MODULE 1: DOCTOR OPD TOKENS */}

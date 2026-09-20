@@ -21,6 +21,7 @@ export interface Doctor {
 
 export interface Appointment {
   id: string;
+  userId?: string;
   patientName: string;
   patientPhone: string;
   patientAge: number;
@@ -56,6 +57,7 @@ export interface LabTest {
 
 export interface LabBooking {
   id: string;
+  userId?: string;
   testId: string;
   testName: string;
   category: string;
@@ -79,6 +81,7 @@ export interface CompounderSession {
 
 export interface MedicineOrder {
   id: string;
+  userId?: string;
   patientName: string;
   patientPhone: string;
   address: string;
@@ -92,6 +95,7 @@ export interface MedicineOrder {
 
 export interface HomeVisitBooking {
   id: string;
+  userId?: string;
   patientName: string;
   patientPhone: string;
   address: string;

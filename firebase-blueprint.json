@@ -1,0 +1,116 @@
+{
+  "$schema": "https://raw.githubusercontent.com/firebase/firebase-tools/master/schema/firestore-blueprint.json",
+  "collections": [
+    {
+      "id": "doctors",
+      "description": "Doctor directory with live token states and emojis",
+      "fields": {
+        "name": { "type": "string" },
+        "specialty": { "type": "string" },
+        "location": { "type": "string" },
+        "qualification": { "type": "string" },
+        "experience": { "type": "string" },
+        "consultationFee": { "type": "number" },
+        "roomNumber": { "type": "string" },
+        "timing": { "type": "string" },
+        "currentToken": { "type": "number" },
+        "availability": { "type": "string" },
+        "emoji": { "type": "string" },
+        "rating": { "type": "number" },
+        "totalPatientsToday": { "type": "number" }
+      }
+    },
+    {
+      "id": "appointments",
+      "description": "Patient OPD bookings with manual token assignment",
+      "fields": {
+        "patientName": { "type": "string" },
+        "patientPhone": { "type": "string" },
+        "patientAge": { "type": "number" },
+        "patientGender": { "type": "string" },
+        "doctorId": { "type": "string" },
+        "doctorName": { "type": "string" },
+        "doctorSpecialty": { "type": "string" },
+        "roomNumber": { "type": "string" },
+        "consultationFee": { "type": "number" },
+        "bookingDate": { "type": "string" },
+        "timeSlot": { "type": "string" },
+        "tokenNumber": { "type": "number" },
+        "status": { "type": "string" },
+        "symptomBrief": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "confirmedAt": { "type": "string" }
+      }
+    },
+    {
+      "id": "medicine_orders",
+      "description": "Prescription and medicine home delivery orders",
+      "fields": {
+        "patientName": { "type": "string" },
+        "patientPhone": { "type": "string" },
+        "address": { "type": "string" },
+        "medicinesList": { "type": "string" },
+        "prescriptionUrl": { "type": "string" },
+        "deliveryFee": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    {
+      "id": "home_visits",
+      "description": "Doctor home visit service requests",
+      "fields": {
+        "patientName": { "type": "string" },
+        "patientPhone": { "type": "string" },
+        "address": { "type": "string" },
+        "preferredDate": { "type": "string" },
+        "preferredTime": { "type": "string" },
+        "specialtyRequired": { "type": "string" },
+        "assignedDoctorName": { "type": "string" },
+        "visitFee": { "type": "number" },
+        "status": { "type": "string" },
+        "symptomBrief": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    {
+      "id": "lab_tests",
+      "description": "Diagnostic lab test catalog",
+      "fields": {
+        "title": { "type": "string" },
+        "price": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "duration": { "type": "string" },
+        "description": { "type": "string" },
+        "includes": { "type": "array" },
+        "popular": { "type": "boolean" }
+      }
+    },
+    {
+      "id": "lab_bookings",
+      "description": "Diagnostic lab test bookings",
+      "fields": {
+        "testId": { "type": "string" },
+        "testTitle": { "type": "string" },
+        "patientName": { "type": "string" },
+        "patientPhone": { "type": "string" },
+        "patientAddress": { "type": "string" },
+        "preferredDate": { "type": "string" },
+        "preferredTime": { "type": "string" },
+        "totalPrice": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    {
+      "id": "app_settings",
+      "description": "Dynamic pricing and operational parameters",
+      "fields": {
+        "homeVisitFee": { "type": "number" },
+        "medicineDeliveryFee": { "type": "number" },
+        "supportPhone": { "type": "string" },
+        "emergencyPhone": { "type": "string" }
+      }
+    }
+  ]
+}

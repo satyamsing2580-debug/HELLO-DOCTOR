@@ -68,7 +68,7 @@ export interface LabBooking {
   address?: string;
   date: string;
   timeSlot: string;
-  status: 'Confirmed' | 'Sample Collected' | 'Report Generated';
+  status: 'Pending' | 'Confirmed' | 'Sample Collected' | 'Report Generated' | 'Completed' | 'Cancelled';
   bookedAt: number;
 }
 

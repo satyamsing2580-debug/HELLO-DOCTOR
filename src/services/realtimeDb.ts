@@ -907,7 +907,24 @@ class HelloDoctorRealtimeDB {
   public subscribeLabBookings(callback: (bookings: LabBooking[]) => void): () => void {
     this.labBookingListeners.add(callback);
     callback([...this.labBookings]);
-    return () => this.labBookingListeners.delete(callback);
+
+    // Active Firestore live sync for staff/admin: receives all incoming lab bookings globally across hospital
+    const unsub = onSnapshot(
+      collection(db, 'lab_bookings'),
+      (snapshot) => {
+        this.labBookings = snapshot.docs
+          .map(d => ({ id: d.id, ...d.data() } as LabBooking))
+          .sort((a, b) => (b.bookedAt || 0) - (a.bookedAt || 0));
+        this.saveToStorage();
+        this.labBookingListeners.forEach(cb => cb([...this.labBookings]));
+      },
+      (err) => console.info('Global lab_bookings query notice:', err?.message || err)
+    );
+
+    return () => {
+      this.labBookingListeners.delete(callback);
+      unsub();
+    };
   }
 
   public subscribeAppSettings(callback: (settings: AppSettings) => void): () => void {
@@ -1519,9 +1536,76 @@ class HelloDoctorRealtimeDB {
     await deleteDoc(doc(db, 'doctors', doctorId));
   }
 
-  // Lab Test Operations
+  // Lab Test Catalog Management (Admin Panel)
+  public async addLabTest(testData: Omit<LabTest, 'id'>): Promise<LabTest> {
+    const testId = `lab-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const newTest: LabTest = {
+      id: testId,
+      name: testData.name.trim(),
+      category: testData.category.trim(),
+      price: Number(testData.price) || 0,
+      originalPrice: Number(testData.originalPrice) || Number(testData.price) || 0,
+      fastingRequired: !!testData.fastingRequired,
+      reportTime: testData.reportTime?.trim() || 'Within 24 hrs',
+      sampleType: testData.sampleType?.trim() || 'Blood Sample',
+      popular: !!testData.popular,
+      description: testData.description?.trim() || ''
+    };
+
+    // Instant local memory update
+    this.labTests.push(newTest);
+    this.saveToStorage();
+    this.labTestListeners.forEach(cb => cb([...this.labTests]));
+
+    try {
+      await setDoc(doc(db, 'lab_tests', testId), newTest);
+    } catch (e) {
+      console.warn('Firestore add lab test notice:', e);
+    }
+    return newTest;
+  }
+
   public async updateLabTest(testId: string, update: Partial<LabTest>): Promise<void> {
-    await updateDoc(doc(db, 'lab_tests', testId), update);
+    const index = this.labTests.findIndex(t => t.id === testId);
+    if (index !== -1) {
+      this.labTests[index] = { ...this.labTests[index], ...update };
+      this.saveToStorage();
+      this.labTestListeners.forEach(cb => cb([...this.labTests]));
+    }
+
+    try {
+      await updateDoc(doc(db, 'lab_tests', testId), update);
+    } catch (e) {
+      console.warn('Firestore update lab test notice:', e);
+    }
+  }
+
+  public async deleteLabTest(testId: string): Promise<void> {
+    this.labTests = this.labTests.filter(t => t.id !== testId);
+    this.saveToStorage();
+    this.labTestListeners.forEach(cb => cb([...this.labTests]));
+
+    try {
+      await deleteDoc(doc(db, 'lab_tests', testId));
+    } catch (e) {
+      console.warn('Firestore delete lab test notice:', e);
+    }
+  }
+
+  // Lab Booking Fulfillment & Status Management (Clinic Staff / Admin)
+  public async updateLabBookingStatus(bookingId: string, status: LabBooking['status']): Promise<void> {
+    const booking = this.labBookings.find(b => b.id === bookingId);
+    if (booking) {
+      booking.status = status;
+      this.saveToStorage();
+      this.labBookingListeners.forEach(cb => cb([...this.labBookings]));
+    }
+
+    try {
+      await updateDoc(doc(db, 'lab_bookings', bookingId), { status });
+    } catch (e) {
+      console.warn('Firestore update lab booking status notice:', e);
+    }
   }
 
   public async bookLabTest(data: {

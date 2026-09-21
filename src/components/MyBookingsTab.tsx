@@ -622,7 +622,19 @@ export const MyBookingsTab: React.FC<Props> = ({
                   </div>
                   <div className="text-right">
                     <span className="text-base font-black text-slate-900">₹{booking.price}</span>
-                    <span className="text-[10px] text-emerald-700 font-bold block bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 mt-1">
+                    <span className={`text-[10px] font-bold block px-2 py-0.5 rounded-full border mt-1 ${
+                      booking.status === 'Completed'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : booking.status === 'Report Generated'
+                        ? 'bg-teal-50 text-teal-700 border-teal-200'
+                        : booking.status === 'Sample Collected'
+                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                        : booking.status === 'Confirmed'
+                        ? 'bg-sky-50 text-sky-700 border-sky-200'
+                        : booking.status === 'Cancelled'
+                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}>
                       {booking.status}
                     </span>
                   </div>

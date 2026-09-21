@@ -3,11 +3,13 @@ import { Doctor, Appointment, LabBooking, MedicineOrder, HomeVisitBooking, AppSe
 import { realtimeDb } from '../services/realtimeDb';
 import { sirenManager } from '../services/audioSiren';
 import { DoctorEditModal } from './DoctorEditModal';
+import { LabTestEditModal } from './LabTestEditModal';
 import { 
   TrendingUp, Users, CalendarCheck, Clock, CheckCircle2, XCircle, 
   PlusCircle, Edit3, Trash2, BellRing, VolumeX, ShieldAlert,
   ArrowUpRight, Stethoscope, Search, RefreshCw, Truck, Home,
-  DollarSign, Sliders, Eye, Save, Phone, MapPin, Check
+  DollarSign, Sliders, Eye, Save, Phone, MapPin, Check,
+  FlaskConical, ClipboardList, Sparkles, Tag, CheckCircle
 } from 'lucide-react';
 
 interface Props {
@@ -35,12 +37,20 @@ export const GroupAdminDashboard: React.FC<Props> = ({
   onAcknowledgeAlarm,
   onExit
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'verification' | 'medicines' | 'home_visits' | 'pricing' | 'doctors' | 'financial'>('verification');
+  const [activeSubTab, setActiveSubTab] = useState<'verification' | 'medicines' | 'home_visits' | 'lab_orders' | 'lab_tests' | 'pricing' | 'doctors' | 'financial'>('verification');
   const [appointmentFilter, setAppointmentFilter] = useState<'pending' | 'all' | 'confirmed' | 'cancelled'>('pending');
   const [doctorToEdit, setDoctorToEdit] = useState<Doctor | null>(null);
   const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
   const [searchDoctor, setSearchDoctor] = useState('');
   
+  // Lab Orders & Lab Tests State
+  const [labOrderFilter, setLabOrderFilter] = useState<'all' | 'pending' | 'confirmed' | 'sample_collected' | 'report_generated' | 'completed' | 'cancelled'>('all');
+  const [searchLabOrder, setSearchLabOrder] = useState('');
+  const [searchLabTest, setSearchLabTest] = useState('');
+  const [labCategoryFilter, setLabCategoryFilter] = useState('All');
+  const [testToEdit, setTestToEdit] = useState<LabTest | null>(null);
+  const [isLabTestModalOpen, setIsLabTestModalOpen] = useState(false);
+
   // Dynamic token assignment temporary state per appointment { [aptId]: tokenNumber }
   const [customTokens, setCustomTokens] = useState<Record<string, number>>({});
   
@@ -79,6 +89,7 @@ export const GroupAdminDashboard: React.FC<Props> = ({
   const pendingAppointments = appointments.filter(a => a.status === 'Pending');
   const pendingMedicines = medicineOrders.filter(m => m.status === 'Pending');
   const pendingVisits = homeVisits.filter(v => v.status === 'Pending');
+  const pendingLabBookings = labBookings.filter(l => l.status === 'Pending' || l.status === 'Confirmed');
 
   const filteredAppointments = appointments.filter(a => {
     if (appointmentFilter === 'pending') return a.status === 'Pending';
@@ -92,6 +103,42 @@ export const GroupAdminDashboard: React.FC<Props> = ({
     d.specialty.toLowerCase().includes(searchDoctor.toLowerCase()) ||
     d.hospital.toLowerCase().includes(searchDoctor.toLowerCase())
   );
+
+  // Lab Orders Filtering (Global for Hospital Admin)
+  const filteredLabBookings = labBookings.filter(b => {
+    if (labOrderFilter === 'pending' && b.status !== 'Pending') return false;
+    if (labOrderFilter === 'confirmed' && b.status !== 'Confirmed') return false;
+    if (labOrderFilter === 'sample_collected' && b.status !== 'Sample Collected') return false;
+    if (labOrderFilter === 'report_generated' && b.status !== 'Report Generated') return false;
+    if (labOrderFilter === 'completed' && b.status !== 'Completed') return false;
+    if (labOrderFilter === 'cancelled' && b.status !== 'Cancelled') return false;
+
+    if (searchLabOrder.trim()) {
+      const q = searchLabOrder.toLowerCase();
+      const matchName = b.patientName.toLowerCase().includes(q);
+      const matchPhone = b.patientPhone.includes(q);
+      const matchTest = b.testName.toLowerCase().includes(q);
+      const matchAddress = b.address?.toLowerCase().includes(q) || false;
+      if (!matchName && !matchPhone && !matchTest && !matchAddress) return false;
+    }
+    return true;
+  });
+
+  // Lab Tests Filtering
+  const labCategories = ['All', ...Array.from(new Set(labTests.map(t => t.category)))];
+  const filteredLabTestsList = labTests.filter(t => {
+    if (labCategoryFilter !== 'All' && t.category.toLowerCase() !== labCategoryFilter.toLowerCase()) {
+      return false;
+    }
+    if (searchLabTest.trim()) {
+      const q = searchLabTest.toLowerCase();
+      const matchName = t.name.toLowerCase().includes(q);
+      const matchCat = t.category.toLowerCase().includes(q);
+      const matchDesc = t.description.toLowerCase().includes(q);
+      if (!matchName && !matchCat && !matchDesc) return false;
+    }
+    return true;
+  });
 
   // Doctor map
   const doctorMap = new Map<string, Doctor>();
@@ -151,6 +198,28 @@ export const GroupAdminDashboard: React.FC<Props> = ({
     }
     setIsDoctorModalOpen(false);
     setDoctorToEdit(null);
+  };
+
+  // Lab Test Catalog Handlers
+  const handleSaveLabTest = async (data: Omit<LabTest, 'id'>) => {
+    if (testToEdit) {
+      await realtimeDb.updateLabTest(testToEdit.id, data);
+    } else {
+      await realtimeDb.addLabTest(data);
+    }
+    setIsLabTestModalOpen(false);
+    setTestToEdit(null);
+  };
+
+  const handleDeleteLabTest = async (testId: string, testName: string) => {
+    if (window.confirm(`Are you sure you want to remove lab test "${testName}" from the hospital catalog?`)) {
+      await realtimeDb.deleteLabTest(testId);
+    }
+  };
+
+  // Lab Booking Fulfillment Handler
+  const handleUpdateLabBookingStatus = async (bookingId: string, status: LabBooking['status']) => {
+    await realtimeDb.updateLabBookingStatus(bookingId, status);
   };
 
   // Pricing Save
@@ -265,6 +334,38 @@ export const GroupAdminDashboard: React.FC<Props> = ({
               {pendingVisits.length}
             </span>
           )}
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('lab_orders')}
+          className={`px-3 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center space-x-1.5 ${
+            activeSubTab === 'lab_orders'
+              ? 'bg-teal-700 text-white shadow-xs'
+              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <ClipboardList className="w-3.5 h-3.5" />
+          <span>Lab Orders</span>
+          {pendingLabBookings.length > 0 && (
+            <span className="bg-teal-900 text-white text-[10px] px-1.5 py-0.2 rounded-full font-black ml-1">
+              {pendingLabBookings.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('lab_tests')}
+          className={`px-3 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center space-x-1.5 ${
+            activeSubTab === 'lab_tests'
+              ? 'bg-cyan-700 text-white shadow-xs'
+              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <FlaskConical className="w-3.5 h-3.5" />
+          <span>Lab Tests</span>
+          <span className="bg-cyan-900 text-white text-[10px] px-1.5 py-0.2 rounded-full font-black ml-1">
+            {labTests.length}
+          </span>
         </button>
 
         <button
@@ -705,6 +806,398 @@ export const GroupAdminDashboard: React.FC<Props> = ({
         </div>
       )}
 
+      {/* SUBTAB: LAB TEST ORDERS FULFILLMENT (Prompt 2) */}
+      {activeSubTab === 'lab_orders' && (
+        <div className="space-y-4">
+          {/* Header Banner */}
+          <div className="p-3 bg-teal-800 text-white rounded-2xl flex items-start justify-between shadow-md">
+            <div className="flex items-start space-x-2.5">
+              <ClipboardList className="w-5 h-5 text-teal-300 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-black text-xs uppercase tracking-wider">Hospital Lab Test Orders</h4>
+                <p className="text-[11px] text-teal-100 mt-0.5">
+                  Live patient diagnostic bookings across the hospital. Manage sample collections and report status.
+                </p>
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <span className="text-[10px] uppercase font-bold text-teal-200 block">Total Revenue</span>
+              <span className="text-sm font-black text-white">
+                ₹{labBookings.filter(b => b.status !== 'Cancelled').reduce((sum, b) => sum + (b.price || 0), 0).toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          {/* Search and Filters */}
+          <div className="space-y-2">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="Search by patient name, phone, or test name..."
+                value={searchLabOrder}
+                onChange={(e) => setSearchLabOrder(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+              />
+              {searchLabOrder && (
+                <button
+                  onClick={() => setSearchLabOrder('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Status Filter Tabs (Scrollable) */}
+            <div className="flex space-x-1.5 overflow-x-auto no-scrollbar pb-1 text-[11px] font-bold">
+              {[
+                { key: 'all', label: 'All', count: labBookings.length },
+                { key: 'pending', label: 'Pending', count: labBookings.filter(b => b.status === 'Pending').length },
+                { key: 'confirmed', label: 'Confirmed', count: labBookings.filter(b => b.status === 'Confirmed').length },
+                { key: 'sample_collected', label: 'Sample Collected', count: labBookings.filter(b => b.status === 'Sample Collected').length },
+                { key: 'report_generated', label: 'Report Generated', count: labBookings.filter(b => b.status === 'Report Generated').length },
+                { key: 'completed', label: 'Completed', count: labBookings.filter(b => b.status === 'Completed').length },
+                { key: 'cancelled', label: 'Cancelled', count: labBookings.filter(b => b.status === 'Cancelled').length }
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setLabOrderFilter(tab.key as any)}
+                  className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition-all cursor-pointer ${
+                    labOrderFilter === tab.key
+                      ? 'bg-teal-700 text-white shadow-2xs'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {tab.label} ({tab.count})
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Orders List */}
+          <div className="space-y-3">
+            {filteredLabBookings.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
+                <ClipboardList className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <p className="font-bold text-slate-700 text-sm">No lab test orders found</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {searchLabOrder ? 'Try changing your search query' : 'When patients book lab tests, they will appear here'}
+                </p>
+              </div>
+            ) : (
+              filteredLabBookings.map((booking) => (
+                <div
+                  key={booking.id}
+                  className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs space-y-3"
+                >
+                  {/* Order Header */}
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${
+                          booking.status === 'Completed'
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            : booking.status === 'Report Generated'
+                            ? 'bg-teal-100 text-teal-800 border-teal-300'
+                            : booking.status === 'Sample Collected'
+                            ? 'bg-indigo-100 text-indigo-800 border-indigo-300'
+                            : booking.status === 'Confirmed'
+                            ? 'bg-sky-100 text-sky-800 border-sky-300'
+                            : booking.status === 'Pending'
+                            ? 'bg-amber-100 text-amber-800 border-amber-300 animate-pulse'
+                            : 'bg-slate-100 text-slate-700 border-slate-300'
+                        }`}>
+                          {booking.status}
+                        </span>
+
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200">
+                          {booking.category}
+                        </span>
+
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center space-x-1 ${
+                          booking.bookingType === 'Home Sample Collection'
+                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                            : 'bg-blue-50 text-blue-700 border border-blue-200'
+                        }`}>
+                          {booking.bookingType === 'Home Sample Collection' ? (
+                            <>
+                              <Home className="w-3 h-3" />
+                              <span>Home Sample</span>
+                            </>
+                          ) : (
+                            <>
+                              <FlaskConical className="w-3 h-3" />
+                              <span>Lab Visit</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+
+                      <h4 className="font-extrabold text-sm text-slate-900 mt-1.5">
+                        {booking.testName}
+                      </h4>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="text-sm font-black text-teal-700">₹{booking.price}</span>
+                      <span className="text-[10px] text-slate-400 block">Total Fee</span>
+                    </div>
+                  </div>
+
+                  {/* Patient & Booking Details */}
+                  <div className="bg-slate-50 p-2.5 rounded-xl text-xs space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800 text-xs">{booking.patientName}</span>
+                      <a
+                        href={`tel:${booking.patientPhone}`}
+                        className="inline-flex items-center space-x-1 text-teal-700 font-bold bg-teal-50 hover:bg-teal-100 px-2 py-0.5 rounded-md border border-teal-200 transition-colors"
+                      >
+                        <Phone className="w-3 h-3" />
+                        <span>{booking.patientPhone}</span>
+                      </a>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-600">
+                      <div>
+                        <span className="font-bold text-slate-700">Scheduled Date:</span> {booking.date}
+                      </div>
+                      <div>
+                        <span className="font-bold text-slate-700">Time Slot:</span> {booking.timeSlot}
+                      </div>
+                    </div>
+
+                    {booking.address && (
+                      <p className="text-[11px] text-slate-700 flex items-start space-x-1 pt-0.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                        <span><span className="font-bold">Collection Address:</span> {booking.address}</span>
+                      </p>
+                    )}
+
+                    {booking.bookedAt && (
+                      <p className="text-[10px] text-slate-400">
+                        Booked: {new Date(booking.bookedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Order Fulfillment Status Controls (Prompt 2) */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-700 block">
+                      Update Order Fulfillment Status:
+                    </label>
+                    <div className="flex flex-wrap gap-1 text-xs">
+                      {(['Pending', 'Confirmed', 'Sample Collected', 'Report Generated', 'Completed', 'Cancelled'] as LabBooking['status'][]).map((st) => (
+                        <button
+                          key={st}
+                          onClick={() => handleUpdateLabBookingStatus(booking.id, st)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-all ${
+                            booking.status === st
+                              ? 'bg-teal-800 text-white shadow-2xs ring-1 ring-teal-900'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          }`}
+                        >
+                          {st}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SUBTAB: LAB TESTS CATALOG MANAGEMENT (Prompt 1) */}
+      {activeSubTab === 'lab_tests' && (
+        <div className="space-y-4">
+          {/* Header Banner & Add Button */}
+          <div className="p-3 bg-cyan-900 text-white rounded-2xl flex items-center justify-between shadow-md">
+            <div className="flex items-start space-x-2.5">
+              <FlaskConical className="w-5 h-5 text-cyan-300 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-black text-xs uppercase tracking-wider">Diagnostic Lab Tests Catalog</h4>
+                <p className="text-[11px] text-cyan-100 mt-0.5">
+                  Full control over prices, preparation guidelines, and sample requirements.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setTestToEdit(null);
+                setIsLabTestModalOpen(true);
+              }}
+              className="px-3 py-2 bg-white text-cyan-950 font-black rounded-xl text-xs hover:bg-cyan-50 transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer shrink-0 ml-2"
+            >
+              <PlusCircle className="w-4 h-4 text-cyan-700" />
+              <span>Add New Test</span>
+            </button>
+          </div>
+
+          {/* Search and Category Filter */}
+          <div className="space-y-2">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="Search lab test name, parameters, or category..."
+                value={searchLabTest}
+                onChange={(e) => setSearchLabTest(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
+              />
+              {searchLabTest && (
+                <button
+                  onClick={() => setSearchLabTest('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Category Chips */}
+            <div className="flex space-x-1.5 overflow-x-auto no-scrollbar pb-1 text-[11px] font-bold">
+              {labCategories.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setLabCategoryFilter(cat)}
+                  className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition-all cursor-pointer ${
+                    labCategoryFilter === cat
+                      ? 'bg-cyan-800 text-white shadow-2xs'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Catalog Count */}
+          <div className="flex items-center justify-between text-xs text-slate-500 px-1 font-semibold">
+            <span>Showing {filteredLabTestsList.length} of {labTests.length} tests</span>
+            <span className="text-teal-700">Syncs live to patient booking view</span>
+          </div>
+
+          {/* Catalog List */}
+          <div className="space-y-3">
+            {filteredLabTestsList.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
+                <FlaskConical className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <p className="font-bold text-slate-700 text-sm">No lab tests match your filter</p>
+                <p className="text-xs text-slate-400 mt-1">Click &quot;Add New Test&quot; above to create a test.</p>
+              </div>
+            ) : (
+              filteredLabTestsList.map((test) => (
+                <div
+                  key={test.id}
+                  className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs space-y-3"
+                >
+                  {/* Test Header */}
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-cyan-50 text-cyan-800 border border-cyan-200">
+                          {test.category}
+                        </span>
+                        {test.popular && (
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 flex items-center space-x-1">
+                            <Sparkles className="w-2.5 h-2.5" />
+                            <span>Popular Test</span>
+                          </span>
+                        )}
+                      </div>
+
+                      <h4 className="font-extrabold text-sm text-slate-900 mt-1.5">
+                        {test.name}
+                      </h4>
+                    </div>
+
+                    {/* Actions: Edit & Delete */}
+                    <div className="flex items-center space-x-1.5 shrink-0 ml-2">
+                      <button
+                        onClick={() => {
+                          setTestToEdit(test);
+                          setIsLabTestModalOpen(true);
+                        }}
+                        className="p-1.5 bg-slate-100 hover:bg-cyan-50 text-slate-700 hover:text-cyan-800 rounded-lg transition-colors cursor-pointer"
+                        title="Edit lab test details"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteLabTest(test.id, test.name)}
+                        className="p-1.5 bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                        title="Delete lab test"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Pricing Display */}
+                  <div className="flex items-baseline space-x-2 pt-0.5">
+                    <span className="text-base font-black text-cyan-800">₹{test.price}</span>
+                    {test.originalPrice && test.originalPrice > test.price && (
+                      <>
+                        <span className="text-xs text-slate-400 line-through">₹{test.originalPrice}</span>
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded">
+                          {Math.round(((test.originalPrice - test.price) / test.originalPrice) * 100)}% OFF
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Preparation Details & Specs (Prompt 1) */}
+                  <div className="bg-slate-50 p-2.5 rounded-xl text-[11px] space-y-1.5 border border-slate-100">
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className={`px-2 py-0.5 rounded-md font-bold ${
+                        test.fastingRequired
+                          ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                          : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      }`}>
+                        {test.fastingRequired ? '10-12 hrs Fasting Required' : 'No Fasting Needed'}
+                      </span>
+
+                      {test.sampleType && (
+                        <span className="px-2 py-0.5 rounded-md font-bold bg-slate-200/80 text-slate-700">
+                          Sample: {test.sampleType}
+                        </span>
+                      )}
+
+                      {test.reportTime && (
+                        <span className="px-2 py-0.5 rounded-md font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                          Report: {test.reportTime}
+                        </span>
+                      )}
+                    </div>
+
+                    {test.description && (
+                      <p className="text-slate-600 text-xs leading-relaxed pt-1">
+                        {test.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Quick Edit Button */}
+                  <button
+                    onClick={() => {
+                      setTestToEdit(test);
+                      setIsLabTestModalOpen(true);
+                    }}
+                    className="w-full py-1.5 text-xs font-bold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 rounded-xl transition-colors cursor-pointer flex items-center justify-center space-x-1"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    <span>Edit Test Name, Price & Preparation</span>
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {/* SUBTAB 4: DYNAMIC PRICING CONTROL CENTER */}
       {activeSubTab === 'pricing' && (
         <form onSubmit={handleSaveSettings} className="space-y-4">
@@ -986,6 +1479,18 @@ export const GroupAdminDashboard: React.FC<Props> = ({
             setDoctorToEdit(null);
           }}
           onSave={handleSaveDoctor}
+        />
+      )}
+
+      {/* Lab Test Add / Edit Modal (Prompt 1) */}
+      {isLabTestModalOpen && (
+        <LabTestEditModal
+          testToEdit={testToEdit}
+          onClose={() => {
+            setIsLabTestModalOpen(false);
+            setTestToEdit(null);
+          }}
+          onSave={handleSaveLabTest}
         />
       )}
 

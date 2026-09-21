@@ -19,6 +19,26 @@ export interface Doctor {
   bio?: string;
 }
 
+export interface GeoLocationData {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  address?: string;
+  isVerified: boolean;
+  verifiedAt?: number;
+}
+
+export interface PaymentDetails {
+  status: 'PAID' | 'PENDING' | 'AT_COUNTER' | 'COD' | 'PAY_ON_VISIT' | 'PAY_AT_LAB';
+  method: string;
+  gateway?: 'Reception Desk' | 'Hospital Counter' | 'Cash on Delivery' | 'Clinic Desk';
+  transactionId?: string;
+  amount: number;
+  paidAt?: number;
+  instructions?: string;
+  statusLabel?: string;
+}
+
 export interface Appointment {
   id: string;
   userId?: string;
@@ -35,11 +55,14 @@ export interface Appointment {
   bookingDate: string;
   timeSlot: string;
   status: 'Pending' | 'Confirmed' | 'Cancelled' | 'Completed';
+  paymentStatus?: string; // e.g. "Confirmed - Pay Cash at Counter"
   bookedAt: number;
   confirmedAt?: number;
   cancelledAt?: number;
   acknowledgedByAdmin?: boolean;
   symptomBrief?: string;
+  location?: GeoLocationData;
+  payment?: PaymentDetails;
 }
 
 export interface LabTest {
@@ -70,6 +93,8 @@ export interface LabBooking {
   timeSlot: string;
   status: 'Pending' | 'Confirmed' | 'Sample Collected' | 'Report Generated' | 'Completed' | 'Cancelled';
   bookedAt: number;
+  location?: GeoLocationData;
+  payment?: PaymentDetails;
 }
 
 export type UserRole = 'patient' | 'admin' | 'compounder';
@@ -91,6 +116,8 @@ export interface MedicineOrder {
   status: 'Pending' | 'Processing' | 'Out for Delivery' | 'Delivered' | 'Cancelled';
   orderedAt: number;
   notes?: string;
+  location?: GeoLocationData;
+  payment?: PaymentDetails;
 }
 
 export interface HomeVisitBooking {
@@ -107,6 +134,8 @@ export interface HomeVisitBooking {
   visitFee: number;
   status: 'Pending' | 'Assigned' | 'Completed' | 'Cancelled';
   bookedAt: number;
+  location?: GeoLocationData;
+  payment?: PaymentDetails;
 }
 
 export interface AppSettings {
@@ -116,3 +145,25 @@ export interface AppSettings {
   emergencyPhone: string;
   emergencyHelpline?: string;
 }
+
+export interface PatientFeedback {
+  id: string;
+  patientName: string;
+  patientPhone: string;
+  appointmentId?: string;
+  bookingId?: string;
+  tokenNumber?: number;
+  doctorId?: string;
+  doctorName?: string;
+  serviceType: 'OPD Consultation' | 'Doctor Home Visit' | 'Diagnostic Lab Test' | 'Medicine Delivery' | 'General Clinic Care';
+  rating: number; // 1 to 5
+  doctorRating?: number; // 1 to 5
+  waitingTimeRating?: number; // 1 to 5
+  staffRating?: number; // 1 to 5
+  cleanlinessRating?: number; // 1 to 5
+  comments: string;
+  createdAt: number;
+  adminStatus: 'New' | 'Reviewed' | 'Action Taken';
+  adminNotes?: string;
+}
+

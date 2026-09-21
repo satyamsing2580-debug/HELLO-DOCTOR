@@ -1,38 +1,57 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Health check / connection test collection
+    match /test/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     match /doctors/{doctorId} {
       allow read: if true;
       allow write: if true;
     }
+
     match /lab_tests/{testId} {
       allow read: if true;
       allow write: if true;
     }
+
     match /app_settings/{settingId} {
       allow read: if true;
       allow write: if true;
     }
+
     match /alarm_state/{docId} {
       allow read: if true;
       allow write: if true;
     }
+
     match /appointments/{aptId} {
       allow read: if true;
       allow create: if true;
       allow update, delete: if true;
     }
+
     match /medicine_orders/{orderId} {
       allow read: if true;
       allow create: if true;
       allow update, delete: if true;
     }
+
     match /home_visits/{visitId} {
       allow read: if true;
       allow create: if true;
       allow update, delete: if true;
     }
+
     match /lab_bookings/{bookingId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+
+    match /patient_feedbacks/{feedbackId} {
       allow read: if true;
       allow create: if true;
       allow update, delete: if true;

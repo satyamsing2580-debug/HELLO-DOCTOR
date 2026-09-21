@@ -115,6 +115,27 @@
         "supportPhone": { "type": "string" },
         "emergencyPhone": { "type": "string" }
       }
+    },
+    {
+      "id": "patient_feedbacks",
+      "description": "Patient care ratings and comments for clinic administrator",
+      "fields": {
+        "bookingId": { "type": "string" },
+        "patientName": { "type": "string" },
+        "patientPhone": { "type": "string" },
+        "doctorName": { "type": "string" },
+        "serviceType": { "type": "string" },
+        "tokenNumber": { "type": "number" },
+        "rating": { "type": "number" },
+        "doctorRating": { "type": "number" },
+        "waitTimeRating": { "type": "number" },
+        "staffRating": { "type": "number" },
+        "cleanlinessRating": { "type": "number" },
+        "comments": { "type": "string" },
+        "adminStatus": { "type": "string" },
+        "adminNotes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
     }
   ]
 }

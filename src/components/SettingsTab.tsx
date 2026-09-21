@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { 
   Phone, Shield, FileText, PhoneCall, MapPin, ShieldCheck, 
-  ChevronRight, X, Siren, CalendarCheck, Sparkles, AlertCircle, Info, Heart
+  ChevronRight, X, Siren, CalendarCheck, Sparkles, AlertCircle, Info, Heart, Mail, MessageSquare, Star
 } from 'lucide-react';
 import { AppSettings } from '../types';
+import { PostVisitFeedbackModal } from './PostVisitFeedbackModal';
 
 interface Props {
   appSettings?: AppSettings;
@@ -12,6 +13,7 @@ interface Props {
 
 export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) => {
   const [activeModal, setActiveModal] = useState<'privacy' | 'terms' | null>(null);
+  const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
 
   const phone1 = appSettings?.supportPhone || '9771264784';
   const phone2 = appSettings?.emergencyPhone || '7091472879';
@@ -200,6 +202,30 @@ export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) 
           </div>
         </div>
 
+        {/* Post-Visit Patient Feedback */}
+        <button
+          onClick={() => setShowFeedbackModal(true)}
+          className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors group cursor-pointer text-left"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Star className="w-5 h-5 stroke-[2.2] fill-amber-400" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-1.5">
+                <span className="font-extrabold text-sm text-slate-900">Patient Care Feedback</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                  Rate Visit
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Rate doctor consultation, wait time, or share comments for admin
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-slate-700" />
+        </button>
+
         {/* Privacy Policy */}
         <button
           onClick={() => setActiveModal('privacy')}
@@ -317,6 +343,21 @@ export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) 
               <p>
                 Medicine deliveries and lab sample collections are handled by verified personnel. Reports are delivered directly to the patient&apos;s registered phone number.
               </p>
+
+              <h4 className="font-extrabold text-sm text-slate-900 mt-3">4. Contact Information & Privacy Officer</h4>
+              <p>
+                For any privacy inquiries, data deletion requests, or questions regarding this policy, you may contact our designated data protection team directly:
+              </p>
+              <div className="mt-2 p-3 bg-slate-100 rounded-xl flex items-center space-x-2 text-slate-800 font-semibold">
+                <Mail className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Official Privacy Email:</span>
+                <a 
+                  href="mailto:satyamsingh36224@gmail.com" 
+                  className="text-emerald-700 hover:text-emerald-800 underline font-bold"
+                >
+                  satyamsingh36224@gmail.com
+                </a>
+              </div>
             </div>
             <div className="p-4 border-t border-slate-100 bg-slate-50 text-right">
               <button
@@ -372,6 +413,14 @@ export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) 
             </div>
           </div>
         </div>
+      )}
+
+      {/* Post-Visit Patient Feedback Modal */}
+      {showFeedbackModal && (
+        <PostVisitFeedbackModal
+          onClose={() => setShowFeedbackModal(false)}
+          onSuccess={() => setShowFeedbackModal(false)}
+        />
       )}
     </div>
   );

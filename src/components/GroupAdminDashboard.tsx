@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Doctor, Appointment, LabBooking, MedicineOrder, HomeVisitBooking, AppSettings, LabTest } from '../types';
+import { Doctor, Appointment, LabBooking, MedicineOrder, HomeVisitBooking, AppSettings, LabTest, PatientFeedback } from '../types';
 import { realtimeDb } from '../services/realtimeDb';
 import { sirenManager } from '../services/audioSiren';
 import { DoctorEditModal } from './DoctorEditModal';
@@ -9,7 +9,7 @@ import {
   PlusCircle, Edit3, Trash2, BellRing, VolumeX, ShieldAlert,
   ArrowUpRight, Stethoscope, Search, RefreshCw, Truck, Home,
   DollarSign, Sliders, Eye, Save, Phone, MapPin, Check,
-  FlaskConical, ClipboardList, Sparkles, Tag, CheckCircle
+  FlaskConical, ClipboardList, Sparkles, Tag, CheckCircle, Star, MessageSquare
 } from 'lucide-react';
 
 interface Props {
@@ -37,11 +37,19 @@ export const GroupAdminDashboard: React.FC<Props> = ({
   onAcknowledgeAlarm,
   onExit
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'verification' | 'medicines' | 'home_visits' | 'lab_orders' | 'lab_tests' | 'pricing' | 'doctors' | 'financial'>('verification');
+  const [activeSubTab, setActiveSubTab] = useState<'verification' | 'medicines' | 'home_visits' | 'lab_orders' | 'lab_tests' | 'feedbacks' | 'pricing' | 'doctors' | 'financial'>('verification');
   const [appointmentFilter, setAppointmentFilter] = useState<'pending' | 'all' | 'confirmed' | 'cancelled'>('pending');
   const [doctorToEdit, setDoctorToEdit] = useState<Doctor | null>(null);
   const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
   const [searchDoctor, setSearchDoctor] = useState('');
+  
+  // Patient Feedbacks State
+  const [feedbacks, setFeedbacks] = useState<PatientFeedback[]>(() => realtimeDb.getFeedbacks());
+  const [feedbackStatusFilter, setFeedbackStatusFilter] = useState<'all' | 'New' | 'Reviewed' | 'Action Taken'>('all');
+  const [feedbackServiceFilter, setFeedbackServiceFilter] = useState<string>('all');
+  const [searchFeedback, setSearchFeedback] = useState<string>('');
+  const [adminNoteInput, setAdminNoteInput] = useState<Record<string, string>>({});
+  const [savingFeedbackId, setSavingFeedbackId] = useState<string | null>(null);
   
   // Lab Orders & Lab Tests State
   const [labOrderFilter, setLabOrderFilter] = useState<'all' | 'pending' | 'confirmed' | 'sample_collected' | 'report_generated' | 'completed' | 'cancelled'>('all');
@@ -83,8 +91,54 @@ export const GroupAdminDashboard: React.FC<Props> = ({
     };
   }, [hasActiveAlarm]);
 
+  // Real-time synchronization of patient feedbacks
+  useEffect(() => {
+    return realtimeDb.subscribeFeedbacks((list) => {
+      setFeedbacks(list);
+    });
+  }, []);
+
   // Dynamic Financial Analytics
   const financials = realtimeDb.getFinancialSummary();
+
+  // Feedback Metrics Calculation
+  const totalFeedbacksCount = feedbacks.length;
+  const newFeedbacksCount = feedbacks.filter(f => f.adminStatus === 'New').length;
+  const avgOverallRating = totalFeedbacksCount > 0 
+    ? (feedbacks.reduce((acc, f) => acc + f.rating, 0) / totalFeedbacksCount).toFixed(1)
+    : '5.0';
+  const avgDoctorRating = totalFeedbacksCount > 0 && feedbacks.some(f => f.doctorRating)
+    ? (feedbacks.filter(f => f.doctorRating).reduce((acc, f) => acc + (f.doctorRating || 0), 0) / feedbacks.filter(f => f.doctorRating).length).toFixed(1)
+    : '5.0';
+  const avgWaitRating = totalFeedbacksCount > 0 && feedbacks.some(f => f.waitingTimeRating)
+    ? (feedbacks.filter(f => f.waitingTimeRating).reduce((acc, f) => acc + (f.waitingTimeRating || 0), 0) / feedbacks.filter(f => f.waitingTimeRating).length).toFixed(1)
+    : '5.0';
+  const avgStaffRating = totalFeedbacksCount > 0 && feedbacks.some(f => f.staffRating)
+    ? (feedbacks.filter(f => f.staffRating).reduce((acc, f) => acc + (f.staffRating || 0), 0) / feedbacks.filter(f => f.staffRating).length).toFixed(1)
+    : '5.0';
+  const avgCleanRating = totalFeedbacksCount > 0 && feedbacks.some(f => f.cleanlinessRating)
+    ? (feedbacks.filter(f => f.cleanlinessRating).reduce((acc, f) => acc + (f.cleanlinessRating || 0), 0) / feedbacks.filter(f => f.cleanlinessRating).length).toFixed(1)
+    : '5.0';
+
+  // Filtered Patient Feedbacks
+  const filteredFeedbacks = feedbacks.filter(f => {
+    if (feedbackStatusFilter !== 'all' && f.adminStatus !== feedbackStatusFilter) {
+      return false;
+    }
+    if (feedbackServiceFilter !== 'all' && f.serviceType !== feedbackServiceFilter) {
+      return false;
+    }
+    if (searchFeedback.trim()) {
+      const q = searchFeedback.toLowerCase();
+      const matchName = f.patientName.toLowerCase().includes(q);
+      const matchPhone = f.patientPhone.includes(q);
+      const matchDoc = f.doctorName?.toLowerCase().includes(q) || false;
+      const matchComments = f.comments.toLowerCase().includes(q);
+      const matchToken = f.tokenNumber ? f.tokenNumber.toString().includes(q) : false;
+      if (!matchName && !matchPhone && !matchDoc && !matchComments && !matchToken) return false;
+    }
+    return true;
+  });
 
   const pendingAppointments = appointments.filter(a => a.status === 'Pending');
   const pendingMedicines = medicineOrders.filter(m => m.status === 'Pending');
@@ -366,6 +420,23 @@ export const GroupAdminDashboard: React.FC<Props> = ({
           <span className="bg-cyan-900 text-white text-[10px] px-1.5 py-0.2 rounded-full font-black ml-1">
             {labTests.length}
           </span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('feedbacks')}
+          className={`px-3 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center space-x-1.5 ${
+            activeSubTab === 'feedbacks'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Star className="w-3.5 h-3.5 fill-current" />
+          <span>Patient Feedbacks</span>
+          {newFeedbacksCount > 0 && (
+            <span className="bg-amber-800 text-white text-[10px] px-1.5 py-0.2 rounded-full font-black ml-1">
+              {newFeedbacksCount} New
+            </span>
+          )}
         </button>
 
         <button
@@ -1198,7 +1269,325 @@ export const GroupAdminDashboard: React.FC<Props> = ({
         </div>
       )}
 
-      {/* SUBTAB 4: DYNAMIC PRICING CONTROL CENTER */}
+      {/* SUBTAB: PATIENT CARE FEEDBACKS & REVIEWS */}
+      {activeSubTab === 'feedbacks' && (
+        <div className="space-y-4">
+          {/* Header Card with Ratings Overview */}
+          <div className="bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700 text-white rounded-3xl p-5 shadow-lg relative overflow-hidden space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Star className="w-5 h-5 text-amber-200 fill-current" />
+                <h3 className="font-black text-sm uppercase tracking-wide">Patient Satisfaction & Ratings</h3>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-white/20 text-white border border-white/30">
+                {totalFeedbacksCount} Reviews
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="bg-white/15 backdrop-blur-xs p-3 rounded-2xl border border-white/20">
+                <span className="text-[10px] text-amber-100 font-bold uppercase block">Overall Patient Score</span>
+                <div className="flex items-baseline space-x-1.5 mt-0.5">
+                  <span className="text-2xl font-black text-white">{avgOverallRating}</span>
+                  <span className="text-xs text-amber-200 font-bold">/ 5.0</span>
+                </div>
+                <div className="flex items-center space-x-0.5 mt-1">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Star
+                      key={s}
+                      className={`w-3.5 h-3.5 ${
+                        s <= Math.round(Number(avgOverallRating))
+                          ? 'text-amber-200 fill-current'
+                          : 'text-amber-300/40'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white/15 backdrop-blur-xs p-3 rounded-2xl border border-white/20 space-y-1 text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-amber-100">Doctor Care:</span>
+                  <span className="font-extrabold text-white">{avgDoctorRating} ★</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-amber-100">Wait Time:</span>
+                  <span className="font-extrabold text-white">{avgWaitRating} ★</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-amber-100">Staff Behavior:</span>
+                  <span className="font-extrabold text-white">{avgStaffRating} ★</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-amber-100">Cleanliness:</span>
+                  <span className="font-extrabold text-white">{avgCleanRating} ★</span>
+                </div>
+              </div>
+            </div>
+
+            {newFeedbacksCount > 0 && (
+              <div className="p-2.5 bg-amber-900/40 rounded-xl border border-amber-300/30 flex items-center justify-between text-xs">
+                <span className="font-bold text-amber-100">
+                  🔔 {newFeedbacksCount} feedback review{newFeedbacksCount > 1 ? 's require' : ' requires'} administrator review
+                </span>
+                <button
+                  onClick={() => setFeedbackStatusFilter('New')}
+                  className="px-2 py-0.5 bg-white text-amber-900 font-extrabold text-[10px] rounded-lg shadow-xs hover:bg-amber-50 cursor-pointer"
+                >
+                  View New
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Status Filters */}
+          <div className="flex space-x-1 bg-slate-200/60 p-1 rounded-xl text-xs font-bold">
+            {(['all', 'New', 'Reviewed', 'Action Taken'] as const).map((st) => (
+              <button
+                key={st}
+                onClick={() => setFeedbackStatusFilter(st)}
+                className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer capitalize text-center ${
+                  feedbackStatusFilter === st
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {st === 'all' ? 'All Reviews' : st}
+                {st === 'New' && newFeedbacksCount > 0 && (
+                  <span className="ml-1 px-1 py-0.2 bg-rose-500 text-white text-[9px] rounded-full">
+                    {newFeedbacksCount}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Search and Service Filter */}
+          <div className="space-y-2">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={searchFeedback}
+                onChange={(e) => setSearchFeedback(e.target.value)}
+                placeholder="Search by patient, phone, doctor or comments..."
+                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+
+            <div className="flex items-center space-x-1 overflow-x-auto pb-1 text-[11px] font-bold">
+              {[
+                { id: 'all', label: 'All Services' },
+                { id: 'OPD Consultation', label: 'OPD' },
+                { id: 'Doctor Home Visit', label: 'Home Visit' },
+                { id: 'Diagnostic Lab Test', label: 'Lab Test' },
+                { id: 'Medicine Delivery', label: 'Medicines' },
+              ].map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setFeedbackServiceFilter(s.id)}
+                  className={`px-2.5 py-1 rounded-lg shrink-0 transition-colors cursor-pointer ${
+                    feedbackServiceFilter === s.id
+                      ? 'bg-amber-600 text-white font-black'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Feedbacks List */}
+          <div className="space-y-3">
+            {filteredFeedbacks.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center border border-slate-200 shadow-xs">
+                <Star className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                <h3 className="font-extrabold text-slate-800 text-sm">No Patient Feedbacks Found</h3>
+                <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
+                  {searchFeedback || feedbackStatusFilter !== 'all' || feedbackServiceFilter !== 'all'
+                    ? 'No reviews match your current filters. Try resetting the filters.'
+                    : 'Patient reviews submitted after hospital visits will appear here in real-time.'}
+                </p>
+              </div>
+            ) : (
+              filteredFeedbacks.map((fb) => (
+                <div
+                  key={fb.id}
+                  className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 space-y-3"
+                >
+                  {/* Card Header: Patient info + Service Badge */}
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                          {fb.serviceType}
+                        </span>
+                        {fb.tokenNumber && (
+                          <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
+                            Token #{fb.tokenNumber}
+                          </span>
+                        )}
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                          fb.adminStatus === 'New'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200 animate-pulse'
+                            : fb.adminStatus === 'Reviewed'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}>
+                          {fb.adminStatus}
+                        </span>
+                      </div>
+
+                      <h4 className="font-black text-sm text-slate-900 mt-1">
+                        {fb.patientName}
+                      </h4>
+                      <a
+                        href={`tel:${fb.patientPhone}`}
+                        className="text-xs font-bold text-sky-600 hover:underline flex items-center space-x-1 mt-0.5"
+                      >
+                        <Phone className="w-3 h-3" />
+                        <span>{fb.patientPhone}</span>
+                      </a>
+                    </div>
+
+                    {/* Overall Rating Badge */}
+                    <div className="text-right">
+                      <div className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-500 text-white rounded-xl shadow-xs font-black text-sm">
+                        <Star className="w-3.5 h-3.5 fill-current" />
+                        <span>{fb.rating}.0</span>
+                      </div>
+                      <span className="block text-[10px] text-slate-400 mt-0.5 font-medium">
+                        {new Date(fb.createdAt).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Doctor Name if available */}
+                  {fb.doctorName && (
+                    <div className="p-2 bg-slate-50 rounded-xl flex items-center space-x-2 text-xs">
+                      <Stethoscope className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="text-slate-600">Doctor Consulted:</span>
+                      <strong className="text-slate-900 font-extrabold">{fb.doctorName}</strong>
+                    </div>
+                  )}
+
+                  {/* Detailed Star Ratings */}
+                  <div className="grid grid-cols-2 gap-1.5 p-2.5 bg-slate-50 rounded-xl text-[11px]">
+                    {fb.doctorRating && (
+                      <div className="flex justify-between items-center text-slate-600">
+                        <span>Doctor Treatment:</span>
+                        <span className="font-extrabold text-amber-700">{fb.doctorRating} ★</span>
+                      </div>
+                    )}
+                    {fb.waitingTimeRating && (
+                      <div className="flex justify-between items-center text-slate-600">
+                        <span>OPD Wait Time:</span>
+                        <span className="font-extrabold text-amber-700">{fb.waitingTimeRating} ★</span>
+                      </div>
+                    )}
+                    {fb.staffRating && (
+                      <div className="flex justify-between items-center text-slate-600">
+                        <span>Staff Behavior:</span>
+                        <span className="font-extrabold text-amber-700">{fb.staffRating} ★</span>
+                      </div>
+                    )}
+                    {fb.cleanlinessRating && (
+                      <div className="flex justify-between items-center text-slate-600">
+                        <span>Hospital Hygiene:</span>
+                        <span className="font-extrabold text-amber-700">{fb.cleanlinessRating} ★</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Patient Comments */}
+                  <div className="p-3 bg-amber-50/70 border border-amber-200/70 rounded-xl space-y-1">
+                    <div className="flex items-center space-x-1 text-amber-800 text-[10px] font-bold uppercase tracking-wider">
+                      <MessageSquare className="w-3 h-3" />
+                      <span>Patient Comments</span>
+                    </div>
+                    <p className="text-xs text-slate-800 font-medium leading-relaxed italic">
+                      "{fb.comments}"
+                    </p>
+                  </div>
+
+                  {/* Admin Notes if present */}
+                  {fb.adminNotes && (
+                    <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-0.5">
+                      <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">
+                        Clinic Admin Notes:
+                      </span>
+                      <p className="text-blue-950 font-medium">{fb.adminNotes}</p>
+                    </div>
+                  )}
+
+                  {/* Admin Action Controls */}
+                  <div className="pt-2 border-t border-slate-100 space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        disabled={savingFeedbackId === fb.id}
+                        onClick={async () => {
+                          const note = adminNoteInput[fb.id] || fb.adminNotes;
+                          await realtimeDb.updateFeedbackAdminStatus(fb.id, 'Reviewed', note);
+                        }}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                          fb.adminStatus === 'Reviewed'
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-blue-700 border-blue-300 hover:bg-blue-50'
+                        }`}
+                      >
+                        ✓ Mark Reviewed
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={savingFeedbackId === fb.id}
+                        onClick={async () => {
+                          const note = adminNoteInput[fb.id] || fb.adminNotes;
+                          await realtimeDb.updateFeedbackAdminStatus(fb.id, 'Action Taken', note);
+                        }}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                          fb.adminStatus === 'Action Taken'
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50'
+                        }`}
+                      >
+                        ✓ Action Taken
+                      </button>
+                    </div>
+
+                    {/* Admin Note Input */}
+                    <div className="flex items-center space-x-1.5">
+                      <input
+                        type="text"
+                        value={adminNoteInput[fb.id] !== undefined ? adminNoteInput[fb.id] : (fb.adminNotes || '')}
+                        onChange={(e) => setAdminNoteInput({ ...adminNoteInput, [fb.id]: e.target.value })}
+                        placeholder="Add admin resolution / counselling note..."
+                        className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-amber-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const note = adminNoteInput[fb.id] !== undefined ? adminNoteInput[fb.id] : (fb.adminNotes || '');
+                          await realtimeDb.updateFeedbackAdminStatus(fb.id, fb.adminStatus, note);
+                        }}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors"
+                      >
+                        Save Note
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
       {activeSubTab === 'pricing' && (
         <form onSubmit={handleSaveSettings} className="space-y-4">
           <div className="p-3 bg-slate-900 text-white rounded-2xl flex items-start space-x-2.5 shadow-md">

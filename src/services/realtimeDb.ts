@@ -1,9 +1,10 @@
 import { 
-  collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, writeBatch, query, where 
+  collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, query, where 
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { 
-  Doctor, Appointment, LabTest, LabBooking, MedicineOrder, HomeVisitBooking, AppSettings 
+  Doctor, Appointment, LabTest, LabBooking, MedicineOrder, HomeVisitBooking, AppSettings,
+  GeoLocationData, PaymentDetails, PatientFeedback
 } from '../types';
 import { sirenManager } from './audioSiren';
 import { userAuth } from './userAuth';
@@ -19,6 +20,29 @@ export const verifyAdminCredential = (pass: string): boolean => {
 export const verifyCompounderCredential = (pass: string): boolean => {
   return pass.trim() === COMPOUNDER_SECURITY_HASH;
 };
+
+/**
+ * Sanitizes objects before sending to Firestore.
+ * Recursively removes any undefined keys to prevent Firestore 'Unsupported field value: undefined' errors.
+ */
+export function cleanDataForFirestore<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return null as unknown as T;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(cleanDataForFirestore) as unknown as T;
+  }
+  if (typeof obj === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        cleaned[key] = cleanDataForFirestore(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return obj;
+}
 
 // Initial Doctors list with authentic practitioners across Gopalganj and Siwan
 const INITIAL_DOCTORS: Doctor[] = [
@@ -679,6 +703,40 @@ const INITIAL_LAB_TESTS: LabTest[] = [
 const INITIAL_APPOINTMENTS: Appointment[] = [];
 const INITIAL_LAB_BOOKINGS: LabBooking[] = [];
 
+const INITIAL_FEEDBACKS: PatientFeedback[] = [
+  {
+    id: 'fb-1',
+    patientName: 'Rameshwar Singh',
+    patientPhone: '9835012345',
+    doctorName: 'Dr. Akhilesh Kumar',
+    serviceType: 'OPD Consultation',
+    rating: 5,
+    doctorRating: 5,
+    waitingTimeRating: 4,
+    staffRating: 5,
+    cleanlinessRating: 5,
+    comments: 'Doctor Akhilesh Kumar listened very patiently to my diabetes history. The live token system saved my family 2 hours of waiting!',
+    createdAt: Date.now() - 86400000 * 2,
+    adminStatus: 'Reviewed',
+    adminNotes: 'Noted with thanks. Patient treated for Type 2 Diabetes.'
+  },
+  {
+    id: 'fb-2',
+    patientName: 'Poonam Devi',
+    patientPhone: '9431098765',
+    doctorName: 'Dr. Amrita Kumari',
+    serviceType: 'OPD Consultation',
+    rating: 5,
+    doctorRating: 5,
+    waitingTimeRating: 5,
+    staffRating: 5,
+    cleanlinessRating: 4,
+    comments: 'Very respectful compounder and clear guidance at room OPD-2. Best clinic in Gopalganj.',
+    createdAt: Date.now() - 86400000,
+    adminStatus: 'New'
+  }
+];
+
 const DEFAULT_APP_SETTINGS: AppSettings = {
   homeVisitFee: 499,
   medicineDeliveryFee: 40,
@@ -695,6 +753,7 @@ class HelloDoctorRealtimeDB {
   private homeVisits: HomeVisitBooking[] = [];
   private labTests: LabTest[] = [];
   private labBookings: LabBooking[] = [];
+  private feedbacks: PatientFeedback[] = [];
   private appSettings: AppSettings = DEFAULT_APP_SETTINGS;
   private hasActiveAlarm: boolean = false;
 
@@ -704,6 +763,7 @@ class HelloDoctorRealtimeDB {
   private homeVisitListeners: Set<(visits: HomeVisitBooking[]) => void> = new Set();
   private labTestListeners: Set<(tests: LabTest[]) => void> = new Set();
   private labBookingListeners: Set<(bookings: LabBooking[]) => void> = new Set();
+  private feedbackListeners: Set<(feedbacks: PatientFeedback[]) => void> = new Set();
   private appSettingsListeners: Set<(settings: AppSettings) => void> = new Set();
   private alarmListeners: Set<(hasActiveAlarm: boolean) => void> = new Set();
 
@@ -732,6 +792,9 @@ class HelloDoctorRealtimeDB {
       const storedLabBooks = localStorage.getItem('hd_labbookings_v5');
       this.labBookings = storedLabBooks ? JSON.parse(storedLabBooks) : INITIAL_LAB_BOOKINGS;
 
+      const storedFeedbacks = localStorage.getItem('hd_feedbacks_v1');
+      this.feedbacks = storedFeedbacks ? JSON.parse(storedFeedbacks) : INITIAL_FEEDBACKS;
+
       const storedSettings = localStorage.getItem('hd_settings_v5');
       this.appSettings = storedSettings ? JSON.parse(storedSettings) : DEFAULT_APP_SETTINGS;
     } catch {
@@ -741,6 +804,7 @@ class HelloDoctorRealtimeDB {
       this.homeVisits = [];
       this.labTests = INITIAL_LAB_TESTS;
       this.labBookings = INITIAL_LAB_BOOKINGS;
+      this.feedbacks = INITIAL_FEEDBACKS;
       this.appSettings = DEFAULT_APP_SETTINGS;
     }
   }
@@ -753,6 +817,7 @@ class HelloDoctorRealtimeDB {
       localStorage.setItem('hd_home_visits_v5', JSON.stringify(this.homeVisits));
       localStorage.setItem('hd_labtests_v5', JSON.stringify(this.labTests));
       localStorage.setItem('hd_labbookings_v5', JSON.stringify(this.labBookings));
+      localStorage.setItem('hd_feedbacks_v1', JSON.stringify(this.feedbacks));
       localStorage.setItem('hd_settings_v5', JSON.stringify(this.appSettings));
     } catch (e) {
       console.warn('Local storage write warning:', e);
@@ -861,6 +926,17 @@ class HelloDoctorRealtimeDB {
         this.alarmListeners.forEach(cb => cb(this.hasActiveAlarm));
       }
     }, (err) => console.info('Firestore alarm listener (offline mode):', err?.message || err));
+
+    // 9. Patient Feedback Real-Time Sync
+    onSnapshot(collection(db, 'patient_feedbacks'), (snapshot) => {
+      if (!snapshot.empty) {
+        this.feedbacks = snapshot.docs
+          .map(d => ({ id: d.id, ...d.data() } as PatientFeedback))
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        this.saveToStorage();
+        this.feedbackListeners.forEach(cb => cb([...this.feedbacks]));
+      }
+    }, (err) => console.info('Firestore patient_feedbacks listener (offline mode):', err?.message || err));
   }
 
   // Check if any unacknowledged pending appointments exist
@@ -874,6 +950,16 @@ class HelloDoctorRealtimeDB {
   }
 
   // Real-Time Subscriptions for React Components
+  public subscribeFeedbacks(callback: (feedbacks: PatientFeedback[]) => void): () => void {
+    this.feedbackListeners.add(callback);
+    callback([...this.feedbacks]);
+    return () => this.feedbackListeners.delete(callback);
+  }
+
+  public getFeedbacks(): PatientFeedback[] {
+    return [...this.feedbacks];
+  }
+
   public subscribeDoctors(callback: (doctors: Doctor[]) => void): () => void {
     this.doctorListeners.add(callback);
     callback([...this.doctors]);
@@ -1224,17 +1310,37 @@ class HelloDoctorRealtimeDB {
     if (!doctor) return 0;
 
     const nextToken = doctor.currentToken + 1;
-    await updateDoc(doc(db, 'doctors', doctorId), {
-      currentToken: nextToken,
-      status: 'In OPD'
-    });
+    doctor.currentToken = nextToken;
+    doctor.status = 'In OPD';
+    this.saveToStorage();
+    this.doctorListeners.forEach(cb => cb([...this.doctors]));
+
+    try {
+      await setDoc(doc(db, 'doctors', doctorId), cleanDataForFirestore({
+        ...doctor,
+        currentToken: nextToken,
+        status: 'In OPD'
+      }), { merge: true });
+    } catch (e) {
+      console.warn('callNextToken sync notice:', e);
+    }
 
     // Mark appointment as Completed if patient with this token exists
     const matchingApt = this.appointments.find(
       a => a.doctorId === doctorId && a.tokenNumber === nextToken && a.status === 'Confirmed'
     );
     if (matchingApt) {
-      await updateDoc(doc(db, 'appointments', matchingApt.id), { status: 'Completed' });
+      matchingApt.status = 'Completed';
+      this.saveToStorage();
+      this.appointmentListeners.forEach(cb => cb([...this.appointments]));
+      try {
+        await setDoc(doc(db, 'appointments', matchingApt.id), cleanDataForFirestore({
+          ...matchingApt,
+          status: 'Completed'
+        }), { merge: true });
+      } catch (e) {
+        console.warn('complete appointment sync notice:', e);
+      }
     }
 
     return nextToken;
@@ -1245,17 +1351,37 @@ class HelloDoctorRealtimeDB {
     if (!doctor) return 0;
 
     const nextToken = doctor.currentToken + 1;
-    await updateDoc(doc(db, 'doctors', doctorId), {
-      currentToken: nextToken
-    });
+    doctor.currentToken = nextToken;
+    this.saveToStorage();
+    this.doctorListeners.forEach(cb => cb([...this.doctors]));
+
+    try {
+      await setDoc(doc(db, 'doctors', doctorId), cleanDataForFirestore({
+        ...doctor,
+        currentToken: nextToken
+      }), { merge: true });
+    } catch (e) {
+      console.warn('skipToken sync notice:', e);
+    }
 
     return nextToken;
   }
 
   public async resetDoctorToken(doctorId: string, startingToken: number = 1): Promise<void> {
-    await updateDoc(doc(db, 'doctors', doctorId), {
-      currentToken: startingToken
-    });
+    const doctor = this.doctors.find(d => d.id === doctorId);
+    if (doctor) {
+      doctor.currentToken = startingToken;
+      this.saveToStorage();
+      this.doctorListeners.forEach(cb => cb([...this.doctors]));
+    }
+    try {
+      await setDoc(doc(db, 'doctors', doctorId), cleanDataForFirestore({
+        ...(doctor ? doctor : {}),
+        currentToken: startingToken
+      }), { merge: true });
+    } catch (e) {
+      console.warn('resetDoctorToken sync notice:', e);
+    }
   }
 
   // Patient Booking Flow -> Strict "Pending" with suggested token
@@ -1269,6 +1395,8 @@ class HelloDoctorRealtimeDB {
     bookingDate: string;
     timeSlot: string;
     symptomBrief?: string;
+    location?: GeoLocationData;
+    payment?: PaymentDetails;
   }): Promise<Appointment> {
     const doctor = this.getDoctorById(data.doctorId);
     if (!doctor) throw new Error('Doctor not found in database');
@@ -1279,6 +1407,10 @@ class HelloDoctorRealtimeDB {
 
     // Auto-save user identity locally
     userAuth.setUserIdentity(data.patientPhone, data.patientName);
+
+    const paymentStatusText = data.payment?.status === 'AT_COUNTER'
+      ? 'Confirmed - Pay Cash at Counter'
+      : (data.payment?.statusLabel || 'Confirmed - Pay Cash at Counter');
 
     const newAppointment: Appointment = {
       id: aptId,
@@ -1296,9 +1428,12 @@ class HelloDoctorRealtimeDB {
       bookingDate: data.bookingDate,
       timeSlot: data.timeSlot,
       status: 'Pending', // Strictly Pending
+      paymentStatus: paymentStatusText,
       bookedAt: Date.now(),
       acknowledgedByAdmin: false,
-      symptomBrief: data.symptomBrief?.trim() || 'General consultation request'
+      symptomBrief: data.symptomBrief?.trim() || 'General consultation request',
+      location: data.location,
+      payment: data.payment
     };
 
     // Immediately reflect in local state for instantaneous responsiveness
@@ -1306,9 +1441,9 @@ class HelloDoctorRealtimeDB {
     this.saveToStorage();
     this.appointmentListeners.forEach(cb => cb([...this.appointments]));
 
-    // 1. Save appointment to Firestore
+    // 1. Save appointment to Firestore with sanitized payload (stripping undefined values)
     try {
-      await setDoc(doc(db, 'appointments', aptId), newAppointment);
+      await setDoc(doc(db, 'appointments', aptId), cleanDataForFirestore(newAppointment), { merge: true });
     } catch (e) {
       console.info('Appointment local cached, sync queued:', e);
     }
@@ -1319,7 +1454,7 @@ class HelloDoctorRealtimeDB {
         hasActiveAlarm: true,
         lastAppointmentId: aptId,
         timestamp: Date.now()
-      });
+      }, { merge: true });
     } catch (e) {
       console.info('Alarm trigger sync notice:', e);
     }
@@ -1334,20 +1469,41 @@ class HelloDoctorRealtimeDB {
 
     const tokenToAssign = assignedTokenNumber !== undefined ? assignedTokenNumber : apt.tokenNumber;
 
-    // Update appointment in Firestore
-    await updateDoc(doc(db, 'appointments', appointmentId), {
-      status: 'Confirmed',
-      tokenNumber: tokenToAssign,
-      confirmedAt: Date.now(),
-      acknowledgedByAdmin: true
-    });
+    // Immediately update local state for instant responsiveness
+    apt.status = 'Confirmed';
+    apt.tokenNumber = tokenToAssign;
+    apt.confirmedAt = Date.now();
+    apt.acknowledgedByAdmin = true;
+    this.saveToStorage();
+    this.appointmentListeners.forEach(cb => cb([...this.appointments]));
+
+    // Update appointment in Firestore using setDoc with merge: true
+    // This prevents "No document to update" if the document hadn't synced yet or was offline
+    try {
+      await setDoc(doc(db, 'appointments', appointmentId), cleanDataForFirestore({
+        ...apt,
+        status: 'Confirmed',
+        tokenNumber: tokenToAssign,
+        confirmedAt: apt.confirmedAt,
+        acknowledgedByAdmin: true
+      }), { merge: true });
+    } catch (err) {
+      console.warn('Appointment confirmation Firestore sync notice:', err);
+    }
 
     // Update doctor's total tokens counter if assigned token is higher
     const doctor = this.doctors.find(d => d.id === apt.doctorId);
     if (doctor && tokenToAssign > (doctor.totalTokensToday || 0)) {
-      await updateDoc(doc(db, 'doctors', doctor.id), {
-        totalTokensToday: tokenToAssign
-      });
+      doctor.totalTokensToday = tokenToAssign;
+      this.saveToStorage();
+      this.doctorListeners.forEach(cb => cb([...this.doctors]));
+      try {
+        await setDoc(doc(db, 'doctors', doctor.id), {
+          totalTokensToday: tokenToAssign
+        }, { merge: true });
+      } catch (err) {
+        console.warn('Doctor token count sync notice:', err);
+      }
     }
 
     // If no other unacknowledged pending appointments exist, silence the alarm
@@ -1355,29 +1511,51 @@ class HelloDoctorRealtimeDB {
       a => a.id !== appointmentId && a.status === 'Pending' && !a.acknowledgedByAdmin
     );
     if (otherPending.length === 0) {
-      await setDoc(doc(db, 'alarm_state', 'current'), {
-        hasActiveAlarm: false,
-        acknowledgedAt: Date.now()
-      }, { merge: true });
+      try {
+        await setDoc(doc(db, 'alarm_state', 'current'), {
+          hasActiveAlarm: false,
+          acknowledgedAt: Date.now()
+        }, { merge: true });
+      } catch (e) {
+        console.warn('Alarm silence notice:', e);
+      }
     }
   }
 
   // Admin Cancel Appointment
   public async cancelAppointment(appointmentId: string): Promise<void> {
-    await updateDoc(doc(db, 'appointments', appointmentId), {
-      status: 'Cancelled',
-      cancelledAt: Date.now(),
-      acknowledgedByAdmin: true
-    });
+    const apt = this.appointments.find(a => a.id === appointmentId);
+    if (apt) {
+      apt.status = 'Cancelled';
+      apt.cancelledAt = Date.now();
+      apt.acknowledgedByAdmin = true;
+      this.saveToStorage();
+      this.appointmentListeners.forEach(cb => cb([...this.appointments]));
+    }
+
+    try {
+      await setDoc(doc(db, 'appointments', appointmentId), cleanDataForFirestore({
+        ...(apt || {}),
+        status: 'Cancelled',
+        cancelledAt: Date.now(),
+        acknowledgedByAdmin: true
+      }), { merge: true });
+    } catch (err) {
+      console.warn('Appointment cancel Firestore sync notice:', err);
+    }
 
     const otherPending = this.appointments.filter(
       a => a.id !== appointmentId && a.status === 'Pending' && !a.acknowledgedByAdmin
     );
     if (otherPending.length === 0) {
-      await setDoc(doc(db, 'alarm_state', 'current'), {
-        hasActiveAlarm: false,
-        acknowledgedAt: Date.now()
-      }, { merge: true });
+      try {
+        await setDoc(doc(db, 'alarm_state', 'current'), {
+          hasActiveAlarm: false,
+          acknowledgedAt: Date.now()
+        }, { merge: true });
+      } catch (e) {
+        console.warn('Alarm silence notice:', e);
+      }
     }
   }
 
@@ -1403,6 +1581,8 @@ class HelloDoctorRealtimeDB {
     medicinesList: string;
     prescriptionImage?: string;
     deliveryFee?: number;
+    location?: GeoLocationData;
+    payment?: PaymentDetails;
   }): Promise<MedicineOrder> {
     const orderId = `med-order-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const activeUserId = data.userId || userAuth.getUserId();
@@ -1418,7 +1598,9 @@ class HelloDoctorRealtimeDB {
       prescriptionImage: data.prescriptionImage,
       deliveryFee: data.deliveryFee ?? this.appSettings.medicineDeliveryFee,
       status: 'Pending',
-      orderedAt: Date.now()
+      orderedAt: Date.now(),
+      location: data.location,
+      payment: data.payment
     };
 
     // Instant local memory update
@@ -1427,7 +1609,7 @@ class HelloDoctorRealtimeDB {
     this.medicineOrderListeners.forEach(cb => cb([...this.medicineOrders]));
 
     try {
-      await setDoc(doc(db, 'medicine_orders', orderId), newOrder);
+      await setDoc(doc(db, 'medicine_orders', orderId), cleanDataForFirestore(newOrder), { merge: true });
     } catch (e) {
       console.info('Medicine order cached locally:', e);
     }
@@ -1435,7 +1617,20 @@ class HelloDoctorRealtimeDB {
   }
 
   public async updateMedicineOrderStatus(orderId: string, status: MedicineOrder['status']): Promise<void> {
-    await updateDoc(doc(db, 'medicine_orders', orderId), { status });
+    const order = this.medicineOrders.find(o => o.id === orderId);
+    if (order) {
+      order.status = status;
+      this.saveToStorage();
+      this.medicineOrderListeners.forEach(cb => cb([...this.medicineOrders]));
+    }
+    try {
+      await setDoc(doc(db, 'medicine_orders', orderId), cleanDataForFirestore({
+        ...(order || {}),
+        status
+      }), { merge: true });
+    } catch (e) {
+      console.warn('updateMedicineOrderStatus sync notice:', e);
+    }
   }
 
   // Doctor Home Visit Service
@@ -1449,6 +1644,8 @@ class HelloDoctorRealtimeDB {
     specialtyRequired: string;
     symptomBrief?: string;
     visitFee?: number;
+    location?: GeoLocationData;
+    payment?: PaymentDetails;
   }): Promise<HomeVisitBooking> {
     const visitId = `visit-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const activeUserId = data.userId || userAuth.getUserId();
@@ -1466,7 +1663,9 @@ class HelloDoctorRealtimeDB {
       symptomBrief: data.symptomBrief?.trim() || '',
       visitFee: data.visitFee ?? this.appSettings.homeVisitFee,
       status: 'Pending',
-      bookedAt: Date.now()
+      bookedAt: Date.now(),
+      location: data.location,
+      payment: data.payment
     };
 
     // Instant local memory update
@@ -1475,7 +1674,7 @@ class HelloDoctorRealtimeDB {
     this.homeVisitListeners.forEach(cb => cb([...this.homeVisits]));
 
     try {
-      await setDoc(doc(db, 'home_visits', visitId), newVisit);
+      await setDoc(doc(db, 'home_visits', visitId), cleanDataForFirestore(newVisit), { merge: true });
     } catch (e) {
       console.info('Home visit cached locally:', e);
     }
@@ -1483,7 +1682,20 @@ class HelloDoctorRealtimeDB {
   }
 
   public async updateHomeVisit(visitId: string, update: Partial<HomeVisitBooking>): Promise<void> {
-    await updateDoc(doc(db, 'home_visits', visitId), update);
+    const visit = this.homeVisits.find(v => v.id === visitId);
+    if (visit) {
+      Object.assign(visit, update);
+      this.saveToStorage();
+      this.homeVisitListeners.forEach(cb => cb([...this.homeVisits]));
+    }
+    try {
+      await setDoc(doc(db, 'home_visits', visitId), cleanDataForFirestore({
+        ...(visit || {}),
+        ...update
+      }), { merge: true });
+    } catch (e) {
+      console.warn('updateHomeVisit sync notice:', e);
+    }
   }
 
   public async updateHomeVisitStatus(visitId: string, status: HomeVisitBooking['status'], assignedDoctorName?: string): Promise<void> {
@@ -1513,22 +1725,47 @@ class HelloDoctorRealtimeDB {
       status: 'Available'
     };
 
-    await setDoc(doc(db, 'doctors', docId), newDoc);
+    try {
+      await setDoc(doc(db, 'doctors', docId), cleanDataForFirestore(newDoc), { merge: true });
+    } catch (e) {
+      console.warn('addDoctor sync notice:', e);
+    }
     return newDoc;
   }
 
   public async updateDoctor(doctorId: string, update: Partial<Doctor>): Promise<void> {
-    await updateDoc(doc(db, 'doctors', doctorId), update);
+    const docItem = this.doctors.find(d => d.id === doctorId);
+    if (docItem) {
+      Object.assign(docItem, update);
+      this.saveToStorage();
+      this.doctorListeners.forEach(cb => cb([...this.doctors]));
+    }
+    try {
+      await setDoc(doc(db, 'doctors', doctorId), cleanDataForFirestore({
+        ...(docItem || {}),
+        ...update
+      }), { merge: true });
+    } catch (e) {
+      console.warn('updateDoctor sync notice:', e);
+    }
 
     // If doctor consultationFee or name or specialty changed, sync across active appointments if relevant
     if (update.name || update.specialty) {
       const affectedApts = this.appointments.filter(a => a.doctorId === doctorId && a.status === 'Pending');
       for (const apt of affectedApts) {
-        await updateDoc(doc(db, 'appointments', apt.id), {
-          doctorName: update.name || apt.doctorName,
-          doctorSpecialty: update.specialty || apt.doctorSpecialty
-        });
+        apt.doctorName = update.name || apt.doctorName;
+        apt.doctorSpecialty = update.specialty || apt.doctorSpecialty;
+        try {
+          await setDoc(doc(db, 'appointments', apt.id), cleanDataForFirestore({
+            doctorName: apt.doctorName,
+            doctorSpecialty: apt.doctorSpecialty
+          }), { merge: true });
+        } catch (e) {
+          console.warn('affected apt sync notice:', e);
+        }
       }
+      this.saveToStorage();
+      this.appointmentListeners.forEach(cb => cb([...this.appointments]));
     }
   }
 
@@ -1558,7 +1795,7 @@ class HelloDoctorRealtimeDB {
     this.labTestListeners.forEach(cb => cb([...this.labTests]));
 
     try {
-      await setDoc(doc(db, 'lab_tests', testId), newTest);
+      await setDoc(doc(db, 'lab_tests', testId), cleanDataForFirestore(newTest), { merge: true });
     } catch (e) {
       console.warn('Firestore add lab test notice:', e);
     }
@@ -1574,7 +1811,7 @@ class HelloDoctorRealtimeDB {
     }
 
     try {
-      await updateDoc(doc(db, 'lab_tests', testId), update);
+      await setDoc(doc(db, 'lab_tests', testId), cleanDataForFirestore(update), { merge: true });
     } catch (e) {
       console.warn('Firestore update lab test notice:', e);
     }
@@ -1602,7 +1839,10 @@ class HelloDoctorRealtimeDB {
     }
 
     try {
-      await updateDoc(doc(db, 'lab_bookings', bookingId), { status });
+      await setDoc(doc(db, 'lab_bookings', bookingId), cleanDataForFirestore({
+        ...(booking || {}),
+        status
+      }), { merge: true });
     } catch (e) {
       console.warn('Firestore update lab booking status notice:', e);
     }
@@ -1617,6 +1857,8 @@ class HelloDoctorRealtimeDB {
     address?: string;
     date: string;
     timeSlot: string;
+    location?: GeoLocationData;
+    payment?: PaymentDetails;
   }): Promise<LabBooking> {
     const test = this.labTests.find(t => t.id === data.testId);
     if (!test) throw new Error('Lab test not found');
@@ -1639,7 +1881,9 @@ class HelloDoctorRealtimeDB {
       date: data.date,
       timeSlot: data.timeSlot,
       status: 'Confirmed',
-      bookedAt: Date.now()
+      bookedAt: Date.now(),
+      location: data.location,
+      payment: data.payment
     };
 
     // Instant local memory update
@@ -1648,7 +1892,7 @@ class HelloDoctorRealtimeDB {
     this.labBookingListeners.forEach(cb => cb([...this.labBookings]));
 
     try {
-      await setDoc(doc(db, 'lab_bookings', bookingId), newBooking);
+      await setDoc(doc(db, 'lab_bookings', bookingId), cleanDataForFirestore(newBooking), { merge: true });
     } catch (e) {
       console.info('Lab booking cached locally:', e);
     }
@@ -1718,6 +1962,62 @@ class HelloDoctorRealtimeDB {
       totalMedicineOrders: this.medicineOrders.length,
       totalHomeVisits: this.homeVisits.length
     };
+  }
+
+  // Patient Post-Visit Feedback Submission for Clinic Admin
+  public async submitPatientFeedback(data: Omit<PatientFeedback, 'id' | 'createdAt' | 'adminStatus'>): Promise<PatientFeedback> {
+    const feedbackId = `fb-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const newFeedback: PatientFeedback = {
+      ...data,
+      id: feedbackId,
+      createdAt: Date.now(),
+      adminStatus: 'New',
+    };
+
+    // Update local cache immediately
+    this.feedbacks = [newFeedback, ...this.feedbacks];
+    this.saveToStorage();
+    this.feedbackListeners.forEach(cb => cb([...this.feedbacks]));
+
+    // Push to Cloud Firestore
+    try {
+      const cleaned = cleanDataForFirestore(newFeedback);
+      await setDoc(doc(db, 'patient_feedbacks', feedbackId), cleaned);
+    } catch (err) {
+      console.info('Firestore feedback save notice (saved locally):', err);
+    }
+
+    return newFeedback;
+  }
+
+  public async updateFeedbackAdminStatus(
+    feedbackId: string, 
+    adminStatus: 'New' | 'Reviewed' | 'Action Taken',
+    adminNotes?: string
+  ): Promise<void> {
+    this.feedbacks = this.feedbacks.map(f => {
+      if (f.id === feedbackId) {
+        return {
+          ...f,
+          adminStatus,
+          adminNotes: adminNotes !== undefined ? adminNotes : f.adminNotes
+        };
+      }
+      return f;
+    });
+
+    this.saveToStorage();
+    this.feedbackListeners.forEach(cb => cb([...this.feedbacks]));
+
+    try {
+      const target = this.feedbacks.find(f => f.id === feedbackId);
+      if (target) {
+        const cleaned = cleanDataForFirestore(target);
+        await setDoc(doc(db, 'patient_feedbacks', feedbackId), cleaned, { merge: true });
+      }
+    } catch (err) {
+      console.info('Firestore feedback status update notice:', err);
+    }
   }
 }
 

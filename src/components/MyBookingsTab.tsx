@@ -3,9 +3,11 @@ import { Appointment, Doctor, LabBooking, MedicineOrder, HomeVisitBooking } from
 import { 
   CalendarCheck, Clock, CheckCircle, AlertTriangle, XCircle, Stethoscope, 
   MapPin, User, Activity, FlaskConical, Search, Sparkles, Truck, Home,
-  FileText, Phone, Eye, ShieldCheck, RefreshCw
+  FileText, Phone, Eye, ShieldCheck, RefreshCw, Banknote, Receipt, Star
 } from 'lucide-react';
 import { userAuth } from '../services/userAuth';
+import { BookingReceiptModal } from './BookingReceiptModal';
+import { PostVisitFeedbackModal } from './PostVisitFeedbackModal';
 
 interface Props {
   appointments: Appointment[];
@@ -34,6 +36,12 @@ export const MyBookingsTab: React.FC<Props> = ({
   const [isChangingPhone, setIsChangingPhone] = useState<boolean>(!currentUserPhone && !userAuth.getUserPhone());
   const [activeTab, setActiveTab] = useState<'opd' | 'medicines' | 'home_visits' | 'labs'>('opd');
   const [selectedPrescriptionPreview, setSelectedPrescriptionPreview] = useState<string | null>(null);
+  const [selectedReceiptAppointment, setSelectedReceiptAppointment] = useState<Appointment | null>(null);
+  const [selectedFeedbackBooking, setSelectedFeedbackBooking] = useState<{
+    booking?: any;
+    serviceType: 'OPD Consultation' | 'Doctor Home Visit' | 'Diagnostic Lab Test' | 'Medicine Delivery' | 'General Clinic Care';
+    doctorName?: string;
+  } | null>(null);
 
   // Sync with userAuth service or parent props
   useEffect(() => {
@@ -395,6 +403,44 @@ export const MyBookingsTab: React.FC<Props> = ({
                         </div>
                       </div>
                     )}
+
+                    {/* Payment Status & Token Receipt Slip */}
+                    <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200/80 flex items-center justify-between text-xs">
+                      <div className="flex items-center space-x-2 min-w-0">
+                        <Banknote className="w-4 h-4 text-emerald-700 shrink-0" />
+                        <div className="min-w-0">
+                          <span className="font-extrabold text-emerald-950 block truncate">
+                            {apt.payment?.statusLabel || 'Pay Cash at Clinic'}
+                          </span>
+                          <span className="text-[10px] text-emerald-800/90 block truncate">
+                            Pay ₹{apt.consultationFee} at OPD reception counter upon arrival
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-1.5 shrink-0 ml-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFeedbackBooking({
+                            booking: apt,
+                            serviceType: 'OPD Consultation',
+                            doctorName: apt.doctorName
+                          })}
+                          className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-bold shadow-xs flex items-center space-x-1 cursor-pointer transition-colors"
+                          title="Rate your doctor visit and leave comments for the clinic admin"
+                        >
+                          <Star className="w-3.5 h-3.5 fill-current" />
+                          <span>Feedback</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedReceiptAppointment(apt)}
+                          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs flex items-center space-x-1 cursor-pointer transition-colors"
+                        >
+                          <Receipt className="w-3.5 h-3.5" />
+                          <span>Token Slip</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
@@ -582,6 +628,21 @@ export const MyBookingsTab: React.FC<Props> = ({
                       <p className="text-slate-700">{visit.symptomBrief}</p>
                     </div>
                   )}
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFeedbackBooking({
+                        booking: visit,
+                        serviceType: 'Doctor Home Visit',
+                        doctorName: visit.assignedDoctorName
+                      })}
+                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center space-x-1.5 cursor-pointer transition-colors"
+                    >
+                      <Star className="w-3.5 h-3.5 fill-current text-amber-500" />
+                      <span>Rate Home Visit Experience</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -655,6 +716,20 @@ export const MyBookingsTab: React.FC<Props> = ({
                       <span className="text-slate-800 font-semibold">{booking.address}</span>
                     </div>
                   )}
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFeedbackBooking({
+                        booking: booking,
+                        serviceType: 'Diagnostic Lab Test'
+                      })}
+                      className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-xs font-bold flex items-center space-x-1.5 cursor-pointer transition-colors"
+                    >
+                      <Star className="w-3.5 h-3.5 fill-current text-amber-500" />
+                      <span>Rate Diagnostic Experience</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -682,6 +757,26 @@ export const MyBookingsTab: React.FC<Props> = ({
             />
           </div>
         </div>
+      )}
+
+      {/* Official OPD Token Slip & Cash-at-Counter Receipt Modal */}
+      {selectedReceiptAppointment && (
+        <BookingReceiptModal
+          appointment={selectedReceiptAppointment}
+          onClose={() => setSelectedReceiptAppointment(null)}
+          onViewMyBookings={() => setSelectedReceiptAppointment(null)}
+        />
+      )}
+
+      {/* Post-Visit Patient Feedback Modal */}
+      {selectedFeedbackBooking && (
+        <PostVisitFeedbackModal
+          booking={selectedFeedbackBooking.booking}
+          defaultServiceType={selectedFeedbackBooking.serviceType}
+          defaultDoctorName={selectedFeedbackBooking.doctorName}
+          onClose={() => setSelectedFeedbackBooking(null)}
+          onSuccess={() => setSelectedFeedbackBooking(null)}
+        />
       )}
     </div>
   );

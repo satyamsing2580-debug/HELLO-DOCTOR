@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { LabTest } from '../types';
+import { LabTest, GeoLocationData, PaymentDetails } from '../types';
 import { realtimeDb } from '../services/realtimeDb';
 import { userAuth } from '../services/userAuth';
-import { Search, FlaskConical, Home, Clock, ShieldCheck, CheckCircle2, X, AlertCircle, Sparkles } from 'lucide-react';
+import { GpsLocationVerifier } from './GpsLocationVerifier';
+import { PaymentCheckoutModal } from './PaymentCheckoutModal';
+import { locationService } from '../services/locationService';
+import { Search, FlaskConical, Home, Clock, ShieldCheck, CheckCircle2, X, AlertCircle, Sparkles, Banknote } from 'lucide-react';
 
 interface Props {
   labTests: LabTest[];
@@ -19,8 +22,12 @@ export const LabTestsTab: React.FC<Props> = ({ labTests, onBookingSuccess }) => 
   const [patientName, setPatientName] = useState(() => userAuth.getUserName());
   const [patientPhone, setPatientPhone] = useState(() => userAuth.getUserPhone());
   const [address, setAddress] = useState('');
+  const [verifiedLocation, setVerifiedLocation] = useState<GeoLocationData | null>(null);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [timeSlot, setTimeSlot] = useState('08:00 AM - 09:00 AM');
+  
+  // Checkout state
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -55,8 +62,10 @@ export const LabTestsTab: React.FC<Props> = ({ labTests, onBookingSuccess }) => 
     return matchesSearch && matchesCat;
   });
 
-  const handleBookSubmit = async (e: React.FormEvent) => {
+  const handleBookSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg('');
+
     if (!patientName.trim()) {
       setErrorMsg('Please enter patient name');
       return;
@@ -65,13 +74,27 @@ export const LabTestsTab: React.FC<Props> = ({ labTests, onBookingSuccess }) => 
       setErrorMsg('Please enter a valid 10-digit phone number');
       return;
     }
-    if (bookingType === 'Home Sample Collection' && !address.trim()) {
-      setErrorMsg('Please enter delivery address for sample collection');
-      return;
+    if (bookingType === 'Home Sample Collection') {
+      if (!address.trim()) {
+        setErrorMsg('Please enter and verify your address for home sample collection');
+        return;
+      }
+      const check = locationService.validateAddress(address, !!verifiedLocation?.isVerified);
+      if (!check.isValid) {
+        setErrorMsg(check.error || 'Please enter a genuine address in Gopalganj or Siwan.');
+        return;
+      }
     }
 
     if (!selectedTestForBooking) return;
 
+    // Proceed to Payment Checkout
+    setShowCheckoutModal(true);
+  };
+
+  const handlePaymentCompleted = async (paymentDetails: PaymentDetails) => {
+    if (!selectedTestForBooking) return;
+    setShowCheckoutModal(false);
     setIsSubmitting(true);
     setErrorMsg('');
 
@@ -83,7 +106,15 @@ export const LabTestsTab: React.FC<Props> = ({ labTests, onBookingSuccess }) => 
         patientPhone,
         address: bookingType === 'Home Sample Collection' ? address : undefined,
         date,
-        timeSlot
+        timeSlot,
+        location: verifiedLocation || (address ? {
+          latitude: 26.4688,
+          longitude: 84.4441,
+          address: address.trim(),
+          isVerified: true,
+          verifiedAt: Date.now()
+        } : undefined),
+        payment: paymentDetails
       });
 
       setSelectedTestForBooking(null);
@@ -334,20 +365,20 @@ export const LabTestsTab: React.FC<Props> = ({ labTests, onBookingSuccess }) => 
                 />
               </div>
 
-              {/* Home Address (if Home sample collection) */}
-              {bookingType === 'Home Sample Collection' && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Complete Address for Home Collection *
-                  </label>
-                  <textarea
-                    rows={2}
-                    required
-                    placeholder="House/Flat No, Landmark, City, Pincode"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 resize-none"
-                  />
+              {/* Address with real-time GPS Verification for Home Sample Collection */}
+              {bookingType === 'Home Sample Collection' ? (
+                <GpsLocationVerifier
+                  label="Sample Collection Address & GPS Verification *"
+                  placeholder="House/Ward No., Mohalla/Village, Landmark, District (Gopalganj/Siwan)..."
+                  manualAddress={address}
+                  onAddressChange={setAddress}
+                  verifiedLocation={verifiedLocation}
+                  onLocationVerified={setVerifiedLocation}
+                />
+              ) : (
+                <div className="p-3 bg-teal-50/50 border border-teal-100 rounded-xl text-xs text-teal-800 flex items-start space-x-2">
+                  <FlaskConical className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                  <span>Lab Visit: You will visit our partnered Diagnostic Pathology Lab center in Gopalganj / Siwan at your chosen time slot.</span>
                 </div>
               )}
 
@@ -387,13 +418,33 @@ export const LabTestsTab: React.FC<Props> = ({ labTests, onBookingSuccess }) => 
                   disabled={isSubmitting}
                   className="w-full py-3.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white font-bold rounded-xl shadow-md flex items-center justify-center space-x-2 transition-all cursor-pointer disabled:opacity-50"
                 >
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span>{isSubmitting ? 'Confirming...' : `Confirm Booking • ₹${selectedTestForBooking.price}`}</span>
+                  <Banknote className="w-5 h-5" />
+                  <span>Pay Cash at Lab / On Collection (₹{selectedTestForBooking.price})</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* Payment Checkout Modal for Lab Tests */}
+      {showCheckoutModal && selectedTestForBooking && (
+        <PaymentCheckoutModal
+          amount={selectedTestForBooking.price}
+          serviceTitle={`Diagnostic Test: ${selectedTestForBooking.name}`}
+          serviceSubtitle={`${bookingType} • ${date}, ${timeSlot}`}
+          patientName={patientName}
+          patientPhone={patientPhone}
+          allowCounterPayment={true}
+          counterPaymentLabel={
+            bookingType === 'Home Sample Collection'
+              ? `Pay ₹${selectedTestForBooking.price} Cash to Phlebotomist upon sample collection`
+              : `Pay ₹${selectedTestForBooking.price} at Lab Reception Desk`
+          }
+          counterPaymentType={bookingType === 'Home Sample Collection' ? 'COD' : 'AT_COUNTER'}
+          onClose={() => setShowCheckoutModal(false)}
+          onPaymentSuccess={handlePaymentCompleted}
+        />
       )}
     </div>
   );

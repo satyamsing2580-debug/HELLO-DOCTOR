@@ -179,7 +179,7 @@ export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) 
                     Hospital Desk
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400">Medicine delivery status, lab tests & billing queries</p>
+                <p className="text-[11px] text-slate-400">Doctor consultations, lab tests & appointment queries</p>
               </div>
             </div>
           </div>
@@ -339,9 +339,9 @@ export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) 
                 Live token numbers are broadcast strictly as queue markers (e.g. &quot;Token #14&quot;). Individual patient medical details and symptoms are kept private and confidential.
               </p>
 
-              <h4 className="font-extrabold text-sm text-slate-900 mt-3">3. Diagnostic Lab & Medicine Delivery</h4>
+              <h4 className="font-extrabold text-sm text-slate-900 mt-3">3. Diagnostic Lab & Doctor Home Visits</h4>
               <p>
-                Medicine deliveries and lab sample collections are handled by verified personnel. Reports are delivered directly to the patient&apos;s registered phone number.
+                Doctor home visits and diagnostic lab sample collections are handled by verified medical personnel. Reports are delivered directly to the patient&apos;s registered phone number.
               </p>
 
               <h4 className="font-extrabold text-sm text-slate-900 mt-3">4. Contact Information & Privacy Officer</h4>

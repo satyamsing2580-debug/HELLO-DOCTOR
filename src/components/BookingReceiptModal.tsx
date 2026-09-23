@@ -96,20 +96,28 @@ export const BookingReceiptModal: React.FC<Props> = ({
           </div>
 
           {/* Patient Details */}
-          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/90 text-xs flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <User className="w-4 h-4 text-slate-400 shrink-0" />
-              <div>
-                <span className="font-bold text-slate-800 block">{appointment.patientName}</span>
-                <span className="text-[11px] text-slate-500">
-                  {appointment.patientAge} yrs • {appointment.patientGender}
-                </span>
+          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/90 text-xs space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <User className="w-4 h-4 text-slate-400 shrink-0" />
+                <div>
+                  <span className="font-bold text-slate-800 block">{appointment.patientName}</span>
+                  <span className="text-[11px] text-slate-500">
+                    {appointment.patientAge} yrs • {appointment.patientGender}
+                  </span>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-[11px] font-semibold text-slate-600 block">+91 {appointment.patientPhone}</span>
+                <span className="text-[10px] text-emerald-600 font-bold">GPS Verified</span>
               </div>
             </div>
-            <div className="text-right">
-              <span className="text-[11px] font-semibold text-slate-600 block">+91 {appointment.patientPhone}</span>
-              <span className="text-[10px] text-emerald-600 font-bold">GPS Verified</span>
-            </div>
+            {appointment.location?.address && (
+              <div className="flex items-center space-x-1.5 text-[11px] text-slate-600 pt-1 border-t border-slate-200/60">
+                <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="font-medium text-slate-700 truncate">{appointment.location.address}</span>
+              </div>
+            )}
           </div>
 
           {/* Payment Status Box */}

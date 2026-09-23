@@ -1,3 +1,5 @@
+import { FamilyDependant } from '../types';
+
 // User Identity & Local Auth Service for Hello Doctor Patient Data Separation
 type UserIdentityListener = (user: { userId: string; phone: string; name: string }) => void;
 
@@ -41,6 +43,10 @@ class UserAuthService {
     return this.userName;
   }
 
+  public isPhoneLocked(): boolean {
+    return !!this.userPhone && this.userPhone.length === 10;
+  }
+
   public normalizePhone(phone: string): string {
     if (!phone) return '';
     // Strip everything except digits
@@ -56,15 +62,28 @@ class UserAuthService {
     return digits;
   }
 
-  public setUserIdentity(phone: string, name?: string) {
+  /**
+   * Sets or locks user identity.
+   * If the session already has a verified phone number, arbitrary switching is blocked
+   * to protect patient confidentiality.
+   */
+  public setUserIdentity(phone: string, name?: string, force = false): boolean {
     const cleanPhone = this.normalizePhone(phone);
-    if (cleanPhone) {
-      this.userPhone = cleanPhone;
-      try {
-        localStorage.setItem('hd_user_phone', cleanPhone);
-      } catch (e) {
-        console.warn('Storage error:', e);
-      }
+    if (!cleanPhone || cleanPhone.length < 10) {
+      return false;
+    }
+
+    // Security Gate: If already verified and not a forced reset, block changing to a different phone
+    if (this.isPhoneLocked() && this.userPhone !== cleanPhone && !force) {
+      console.warn('Security Notice: Cannot switch to an unauthorized phone number in an active verified session.');
+      return false;
+    }
+
+    this.userPhone = cleanPhone;
+    try {
+      localStorage.setItem('hd_user_phone', cleanPhone);
+    } catch (e) {
+      console.warn('Storage error:', e);
     }
 
     if (name && name.trim()) {
@@ -77,6 +96,7 @@ class UserAuthService {
     }
 
     this.notify();
+    return true;
   }
 
   public clearUserIdentity() {
@@ -91,27 +111,121 @@ class UserAuthService {
     this.notify();
   }
 
+  /**
+   * Strictly verifies whether a booking belongs to the current verified phone account.
+   * Prevents any cross-account data leakage.
+   */
   public isUserBooking(
     item: { userId?: string; patientPhone?: string },
     filterPhoneOverride?: string
   ): boolean {
-    const activePhone = filterPhoneOverride ? this.normalizePhone(filterPhoneOverride) : this.userPhone;
+    const activePhone = this.normalizePhone(filterPhoneOverride || this.userPhone);
     const activeUserId = this.userId;
 
-    // 1. Direct user ID match
-    if (item.userId && activeUserId && item.userId === activeUserId) {
+    if (!activePhone && !activeUserId) {
+      return false;
+    }
+
+    // 1. Strict phone number matching (Primary privacy barrier)
+    if (activePhone && item.patientPhone) {
+      const itemPhone = this.normalizePhone(item.patientPhone);
+      if (itemPhone === activePhone) {
+        return true;
+      }
+      // If the booking explicitly has a different phone number, REJECT it immediately
+      return false;
+    }
+
+    // 2. User ID match ONLY if booking has no phone attached
+    if (item.userId && activeUserId && item.userId === activeUserId && !item.patientPhone) {
       return true;
     }
 
-    // 2. Phone number match (robustly normalized)
-    if (activePhone && item.patientPhone) {
-      const itemPhone = this.normalizePhone(item.patientPhone);
-      if (itemPhone && itemPhone === activePhone) {
-        return true;
+    return false;
+  }
+
+  /**
+   * Family Profiles: Retrieves dependants created under the SAME verified account/phone number.
+   * All dependants share the single verified phone number and cannot access other accounts.
+   */
+  public getFamilyDependants(): FamilyDependant[] {
+    const phone = this.userPhone;
+    if (!phone) return [];
+
+    try {
+      const raw = localStorage.getItem(`hd_dependants_${phone}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
       }
+    } catch (e) {
+      console.warn('Error reading family dependants:', e);
     }
 
-    return false;
+    // Default primary self profile if available
+    const primaryName = this.userName || 'Primary Account';
+    const initial: FamilyDependant[] = [
+      {
+        id: `self_${phone}`,
+        name: primaryName,
+        relationship: 'Self',
+        createdAt: Date.now()
+      }
+    ];
+
+    try {
+      localStorage.setItem(`hd_dependants_${phone}`, JSON.stringify(initial));
+    } catch {}
+
+    return initial;
+  }
+
+  /**
+   * Add a new family dependant strictly under the current verified account phone number.
+   */
+  public addFamilyDependant(
+    dependant: Omit<FamilyDependant, 'id' | 'createdAt'>
+  ): FamilyDependant | null {
+    const phone = this.userPhone;
+    if (!phone) return null;
+
+    const list = this.getFamilyDependants();
+    const newDep: FamilyDependant = {
+      id: `dep_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      name: dependant.name.trim(),
+      relationship: dependant.relationship || 'Other',
+      age: dependant.age,
+      gender: dependant.gender,
+      createdAt: Date.now()
+    };
+
+    const updated = [...list, newDep];
+    try {
+      localStorage.setItem(`hd_dependants_${phone}`, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Error saving dependant:', e);
+    }
+
+    return newDep;
+  }
+
+  /**
+   * Remove a family dependant strictly from the current verified account.
+   */
+  public removeFamilyDependant(id: string): void {
+    const phone = this.userPhone;
+    if (!phone) return;
+
+    const list = this.getFamilyDependants();
+    // Cannot delete the primary 'Self' profile
+    const updated = list.filter(d => d.id !== id || d.relationship === 'Self');
+    try {
+      localStorage.setItem(`hd_dependants_${phone}`, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Error removing dependant:', e);
+    }
   }
 
   public subscribe(listener: UserIdentityListener): () => void {

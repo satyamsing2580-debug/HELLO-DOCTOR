@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MapPin, Navigation, CheckCircle2, AlertCircle, RefreshCw, Compass } from 'lucide-react';
+import { MapPin, Navigation, CheckCircle2, AlertCircle, RefreshCw, Compass, Edit3, RotateCcw } from 'lucide-react';
 import { GeoLocationData } from '../types';
 import { locationService } from '../services/locationService';
 
@@ -25,21 +25,51 @@ export const GpsLocationVerifier: React.FC<Props> = ({
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [addressValidationMsg, setAddressValidationMsg] = useState<string | null>(null);
+  // Track whether the user has manually edited the address input field
+  const userEditedRef = React.useRef(false);
 
   const handleFetchGps = async () => {
     setIsLocating(true);
     setLocationError(null);
 
     try {
-      const geo = await locationService.fetchCurrentGpsLocation();
-      const areaCheck = locationService.verifyServiceArea(geo.latitude, geo.longitude);
+      const geo = await locationService.fetchCurrentGpsLocation(({ latitude, longitude, defaultReadableName }) => {
+        // Requirement 3: As soon as Latitude/Longitude are fetched, instantly populate default readable location name in UI state
+        onLocationVerified({
+          latitude,
+          longitude,
+          accuracy: 10,
+          address: defaultReadableName,
+          locationName: defaultReadableName,
+          subDistrict: defaultReadableName.split(',')[0].trim(),
+          district: defaultReadableName.split(',')[1]?.trim() || 'Gopalganj',
+          isVerified: true,
+          verifiedAt: Date.now(),
+        });
 
+        // Instantly populate readable location name in manual input if not already customized
+        if (!userEditedRef.current || !manualAddress.trim() || manualAddress.trim().length < 8) {
+          onAddressChange(defaultReadableName);
+        }
+      });
+
+      // Guarantee human-readable location name
+      const readableName =
+        geo.address ||
+        geo.locationName ||
+        locationService.getInstantReadableLocality(geo.latitude, geo.longitude);
+
+      // 1. Update verified location state
       onLocationVerified(geo);
 
-      // If user hasn't typed an address yet or address is very brief, auto-fill reverse-geocoded address
-      if (!manualAddress.trim() || manualAddress.trim().length < 15) {
-        if (geo.address && !geo.address.startsWith('Lat:')) {
-          onAddressChange(geo.address);
+      // 2. Requirement 3 & 4: Ensure manual input remains editable if fetched address needs user correction
+      if (!userEditedRef.current || !manualAddress.trim() || manualAddress.trim().length < 8) {
+        onAddressChange(readableName);
+      } else {
+        const trimmed = manualAddress.trim();
+        // If current manual address was a placeholder or raw coordinate string, replace with fresh readable name
+        if (trimmed.startsWith('Lat:') || trimmed.includes('°N') || trimmed.length < 15) {
+          onAddressChange(readableName);
         }
       }
 
@@ -61,11 +91,27 @@ export const GpsLocationVerifier: React.FC<Props> = ({
     }
   };
 
+  const handleResetToDetected = () => {
+    if (verifiedLocation?.address || verifiedLocation?.locationName) {
+      userEditedRef.current = false;
+      const target = verifiedLocation.address || verifiedLocation.locationName || '';
+      onAddressChange(target);
+      setAddressValidationMsg(null);
+    }
+  };
+
+  const handleAddHouseWardPrefix = () => {
+    userEditedRef.current = true;
+    if (!manualAddress.startsWith('House/Ward No.') && !manualAddress.startsWith('Ward No.')) {
+      onAddressChange(`Ward No. , ${manualAddress}`);
+    }
+  };
+
   return (
     <div className="space-y-2.5 p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200 text-xs">
       <div className="flex items-center justify-between">
         <label className="font-bold text-slate-800 flex items-center space-x-1.5">
-          <MapPin className="w-3.5 h-3.5 text-sky-600" />
+          <MapPin className="w-3.5 h-3.5 text-sky-600 shrink-0" />
           <span>{label}</span>
         </label>
         {verifiedLocation?.isVerified ? (
@@ -95,12 +141,12 @@ export const GpsLocationVerifier: React.FC<Props> = ({
         {isLocating ? (
           <>
             <RefreshCw className="w-4 h-4 animate-spin text-current" />
-            <span>Detecting Exact Device GPS Coordinates...</span>
+            <span>Resolving Exact Device Location & Address...</span>
           </>
         ) : verifiedLocation?.isVerified ? (
           <>
             <Navigation className="w-4 h-4 text-emerald-600" />
-            <span>Exact GPS: {verifiedLocation.latitude.toFixed(6)}°N, {verifiedLocation.longitude.toFixed(6)}°E (Tap to Recalibrate)</span>
+            <span>📍 {verifiedLocation.address || `${verifiedLocation.latitude.toFixed(4)}°N, ${verifiedLocation.longitude.toFixed(4)}°E`} (Tap to Re-check)</span>
           </>
         ) : (
           <>
@@ -112,33 +158,56 @@ export const GpsLocationVerifier: React.FC<Props> = ({
 
       {/* Exact Location Details Card */}
       {verifiedLocation?.isVerified && (
-        <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-[11px] text-emerald-950 space-y-1">
+        <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-[11px] text-emerald-950 space-y-1.5">
           <div className="flex items-center justify-between font-bold">
             <span className="flex items-center space-x-1 text-emerald-800">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Exact Location Verified</span>
+              <span>Resolved Location Name</span>
             </span>
             <span className="bg-emerald-200/70 text-emerald-900 px-2 py-0.5 rounded-full text-[10px]">
               Accuracy: ±{verifiedLocation.accuracy || 5}m
             </span>
           </div>
-          {verifiedLocation.address && (
-            <p className="text-slate-700 text-[11px] font-medium leading-tight">
-              {verifiedLocation.address}
+
+          <div className="bg-white/90 p-2 rounded-lg border border-emerald-200/60">
+            <p className="text-slate-900 text-xs font-bold leading-snug">
+              {verifiedLocation.address || verifiedLocation.locationName || 'Bhitbherwa, Gopalganj, Bihar'}
             </p>
-          )}
-          <div className="flex items-center justify-between pt-1 text-[10px]">
-            <span className="text-slate-500">
-              Lat: {verifiedLocation.latitude.toFixed(6)}, Lon: {verifiedLocation.longitude.toFixed(6)}
-            </span>
-            <a
-              href={`https://www.google.com/maps?q=${verifiedLocation.latitude},${verifiedLocation.longitude}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sky-600 hover:text-sky-800 font-bold underline"
+            <div className="flex items-center justify-between pt-1 text-[10px] text-slate-500">
+              <span>
+                Coordinates: {verifiedLocation.latitude.toFixed(6)}°N, {verifiedLocation.longitude.toFixed(6)}°E
+              </span>
+              <a
+                href={`https://www.google.com/maps?q=${verifiedLocation.latitude},${verifiedLocation.longitude}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-600 hover:text-sky-800 font-bold underline ml-2 shrink-0"
+              >
+                View on Map ↗
+              </a>
+            </div>
+          </div>
+
+          {/* Quick Location Action Buttons */}
+          <div className="flex items-center space-x-2 pt-0.5">
+            <button
+              type="button"
+              onClick={handleResetToDetected}
+              className="px-2 py-1 bg-white hover:bg-emerald-100/50 border border-emerald-300 rounded-lg text-[10px] font-semibold text-emerald-800 flex items-center space-x-1 transition-colors cursor-pointer"
+              title="Reset input field to detected location"
             >
-              Verify on Map ↗
-            </a>
+              <RotateCcw className="w-2.5 h-2.5" />
+              <span>Reset Field to Detected</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleAddHouseWardPrefix}
+              className="px-2 py-1 bg-white hover:bg-emerald-100/50 border border-emerald-300 rounded-lg text-[10px] font-semibold text-emerald-800 flex items-center space-x-1 transition-colors cursor-pointer"
+              title="Prepend Ward/House number"
+            >
+              <Edit3 className="w-2.5 h-2.5" />
+              <span>+ Add Ward/House No.</span>
+            </button>
           </div>
         </div>
       )}
@@ -159,11 +228,16 @@ export const GpsLocationVerifier: React.FC<Props> = ({
 
       {/* Manual Detailed Address Field with Validation */}
       <div className="space-y-1">
+        <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+          <span>Complete Detailed Address</span>
+          <span className="text-[10px] text-slate-400">✏️ Editable below</span>
+        </div>
         <textarea
           rows={2}
           required={required}
           value={manualAddress}
           onChange={(e) => {
+            userEditedRef.current = true;
             onAddressChange(e.target.value);
             if (addressValidationMsg) setAddressValidationMsg(null);
           }}
@@ -182,9 +256,9 @@ export const GpsLocationVerifier: React.FC<Props> = ({
       </div>
 
       <p className="text-[10px] text-slate-500 flex items-center justify-between">
-        <span>📍 Coverage: Gopalganj & Siwan (Bihar)</span>
+        <span>📍 Service Areas: Gopalganj & Siwan (Bihar)</span>
         {verifiedLocation?.accuracy && (
-          <span className="text-emerald-700 font-medium">Accuracy: ±{verifiedLocation.accuracy}m</span>
+          <span className="text-emerald-700 font-medium">GPS: ±{verifiedLocation.accuracy}m</span>
         )}
       </p>
     </div>

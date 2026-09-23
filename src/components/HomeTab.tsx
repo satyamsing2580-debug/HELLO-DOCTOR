@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { Search, Stethoscope, Star, MapPin, Clock, ArrowRight, ShieldCheck, Zap, Sparkles, Activity, Truck, Home as HomeIcon, FlaskConical, ChevronRight } from 'lucide-react';
+import { Search, Stethoscope, Star, MapPin, Clock, ArrowRight, ShieldCheck, Zap, Sparkles, Activity, Home as HomeIcon, FlaskConical, ChevronRight } from 'lucide-react';
 import { Doctor, AppSettings } from '../types';
 import { BookingModal } from './BookingModal';
-import { MedicineDeliveryModal } from './MedicineDeliveryModal';
 import { HomeVisitModal } from './HomeVisitModal';
 import { DoctorAvatar } from './DoctorAvatar';
 
@@ -22,7 +21,6 @@ export const HomeTab: React.FC<Props> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('All');
   const [selectedDoctorForBooking, setSelectedDoctorForBooking] = useState<Doctor | null>(null);
-  const [isMedicineModalOpen, setIsMedicineModalOpen] = useState(false);
   const [isHomeVisitModalOpen, setIsHomeVisitModalOpen] = useState(false);
 
   const specialties = [
@@ -85,7 +83,7 @@ export const HomeTab: React.FC<Props> = ({
           <span className="text-[11px] font-bold text-sky-700">Sadar Hospital Gopalganj & Siwan</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-3 gap-2">
           {/* Card 1: OPD Token */}
           <button
             onClick={() => {
@@ -94,72 +92,48 @@ export const HomeTab: React.FC<Props> = ({
             }}
             className="p-3 bg-gradient-to-br from-sky-500 to-blue-600 rounded-2xl text-white text-left shadow-xs hover:shadow-md transition-all relative overflow-hidden group cursor-pointer"
           >
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-xl mb-2">
+            <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-lg mb-2">
               🩺
             </div>
-            <h4 className="font-extrabold text-xs leading-tight">Instant OPD Token</h4>
-            <p className="text-[10px] text-sky-100 mt-0.5">Live token queue tracking</p>
-            <div className="mt-2 flex items-center text-[10px] font-bold text-sky-100 group-hover:translate-x-0.5 transition-transform">
-              <span>Book Doctor</span>
-              <ChevronRight className="w-3 h-3 ml-0.5" />
+            <h4 className="font-extrabold text-[11px] leading-tight">OPD Token</h4>
+            <p className="text-[9px] text-sky-100 mt-0.5">Live queue tracking</p>
+            <div className="mt-2 flex items-center text-[9px] font-bold text-sky-100 group-hover:translate-x-0.5 transition-transform">
+              <span>Book</span>
+              <ChevronRight className="w-2.5 h-2.5 ml-0.5" />
             </div>
           </button>
 
-          {/* Card 2: Medicine Home Delivery */}
-          <button
-            onClick={() => setIsMedicineModalOpen(true)}
-            className="p-3 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-2xl text-white text-left shadow-xs hover:shadow-md transition-all relative overflow-hidden group cursor-pointer"
-          >
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-xl mb-2">
-              🚚
-            </div>
-            <div className="flex items-center justify-between">
-              <h4 className="font-extrabold text-xs leading-tight">Ghar Par Dawai</h4>
-              <span className="text-[9px] font-black bg-white/25 px-1.5 py-0.5 rounded-full">
-                ₹{appSettings.medicineDeliveryFee}
-              </span>
-            </div>
-            <p className="text-[10px] text-emerald-100 mt-0.5">Upload doctor prescription</p>
-            <div className="mt-2 flex items-center text-[10px] font-bold text-emerald-100 group-hover:translate-x-0.5 transition-transform">
-              <span>Order Now</span>
-              <ChevronRight className="w-3 h-3 ml-0.5" />
-            </div>
-          </button>
-
-          {/* Card 3: Doctor Home Visit */}
+          {/* Card 2: Doctor Home Visit */}
           <button
             onClick={() => setIsHomeVisitModalOpen(true)}
             className="p-3 bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl text-white text-left shadow-xs hover:shadow-md transition-all relative overflow-hidden group cursor-pointer"
           >
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-xl mb-2">
+            <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-lg mb-2">
               🏡
             </div>
             <div className="flex items-center justify-between">
-              <h4 className="font-extrabold text-xs leading-tight">Doctor Home Visit</h4>
-              <span className="text-[9px] font-black bg-white/25 px-1.5 py-0.5 rounded-full">
-                ₹{appSettings.homeVisitFee}
-              </span>
+              <h4 className="font-extrabold text-[11px] leading-tight">Home Visit</h4>
             </div>
-            <p className="text-[10px] text-indigo-100 mt-0.5">MBBS doctor at doorstep</p>
-            <div className="mt-2 flex items-center text-[10px] font-bold text-indigo-100 group-hover:translate-x-0.5 transition-transform">
-              <span>Call Doctor</span>
-              <ChevronRight className="w-3 h-3 ml-0.5" />
+            <p className="text-[9px] text-indigo-100 mt-0.5">Doctor at doorstep</p>
+            <div className="mt-2 flex items-center text-[9px] font-bold text-indigo-100 group-hover:translate-x-0.5 transition-transform">
+              <span>₹{appSettings.homeVisitFee}</span>
+              <ChevronRight className="w-2.5 h-2.5 ml-0.5" />
             </div>
           </button>
 
-          {/* Card 4: Diagnostic Lab Tests */}
+          {/* Card 3: Diagnostic Lab Tests */}
           <button
             onClick={() => onNavigateToTab('labtests')}
             className="p-3 bg-gradient-to-br from-teal-600 to-cyan-700 rounded-2xl text-white text-left shadow-xs hover:shadow-md transition-all relative overflow-hidden group cursor-pointer"
           >
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-xl mb-2">
+            <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-lg mb-2">
               🧪
             </div>
-            <h4 className="font-extrabold text-xs leading-tight">Diagnostic Tests</h4>
-            <p className="text-[10px] text-teal-100 mt-0.5">Home sample collection</p>
-            <div className="mt-2 flex items-center text-[10px] font-bold text-teal-100 group-hover:translate-x-0.5 transition-transform">
-              <span>View Tests</span>
-              <ChevronRight className="w-3 h-3 ml-0.5" />
+            <h4 className="font-extrabold text-[11px] leading-tight">Lab Tests</h4>
+            <p className="text-[9px] text-teal-100 mt-0.5">Home sample test</p>
+            <div className="mt-2 flex items-center text-[9px] font-bold text-teal-100 group-hover:translate-x-0.5 transition-transform">
+              <span>Explore</span>
+              <ChevronRight className="w-2.5 h-2.5 ml-0.5" />
             </div>
           </button>
         </div>
@@ -305,18 +279,6 @@ export const HomeTab: React.FC<Props> = ({
           onClose={() => setSelectedDoctorForBooking(null)}
           onSuccess={() => {
             setSelectedDoctorForBooking(null);
-            onBookingCreated();
-            onNavigateToTab('bookings');
-          }}
-        />
-      )}
-
-      {/* Medicine Delivery Modal */}
-      {isMedicineModalOpen && (
-        <MedicineDeliveryModal
-          deliveryFee={appSettings.medicineDeliveryFee}
-          onClose={() => setIsMedicineModalOpen(false)}
-          onSuccess={() => {
             onBookingCreated();
             onNavigateToTab('bookings');
           }}

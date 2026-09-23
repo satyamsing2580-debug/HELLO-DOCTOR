@@ -37,8 +37,8 @@ export const COUNTER_PAYMENT_CONFIGS: Record<CounterPaymentType, CounterPaymentC
   COD: {
     type: 'COD',
     label: 'Cash on Delivery (COD)',
-    sublabel: 'Pay the delivery executive in cash upon receiving your medicines.',
-    instructions: 'Hand over cash to the delivery partner once medicines and invoice are verified.',
+    sublabel: 'Pay the delivery partner in cash upon receiving your delivery package.',
+    instructions: 'Hand over cash to the delivery partner once package is received and verified.',
     statusLabel: 'Cash on Delivery',
   },
   PAY_AT_LAB: {

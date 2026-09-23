@@ -44,21 +44,6 @@
       }
     },
     {
-      "id": "medicine_orders",
-      "description": "Prescription and medicine home delivery orders",
-      "fields": {
-        "userId": { "type": "string" },
-        "patientName": { "type": "string" },
-        "patientPhone": { "type": "string" },
-        "address": { "type": "string" },
-        "medicinesList": { "type": "string" },
-        "prescriptionUrl": { "type": "string" },
-        "deliveryFee": { "type": "number" },
-        "status": { "type": "string" },
-        "createdAt": { "type": "string" }
-      }
-    },
-    {
       "id": "home_visits",
       "description": "Doctor home visit service requests",
       "fields": {
@@ -111,7 +96,6 @@
       "description": "Dynamic pricing and operational parameters",
       "fields": {
         "homeVisitFee": { "type": "number" },
-        "medicineDeliveryFee": { "type": "number" },
         "supportPhone": { "type": "string" },
         "emergencyPhone": { "type": "string" }
       }

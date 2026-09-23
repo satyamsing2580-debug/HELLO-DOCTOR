@@ -59,7 +59,13 @@ export const HomeVisitModal: React.FC<HomeVisitModalProps> = ({
       return;
     }
 
-    const check = locationService.validateAddress(address, !!verifiedLocation?.isVerified);
+    // MANDATORY REAL-TIME GPS VERIFICATION: Play Store & Indus Appstore Compliance
+    if (!verifiedLocation || !verifiedLocation.isVerified) {
+      setErrorMessage('GPS Location Verification is mandatory. Please tap "Detect Current GPS Location" above to verify your real-time physical address before requesting a doctor visit.');
+      return;
+    }
+
+    const check = locationService.validateAddress(address, true);
     if (!check.isValid) {
       setErrorMessage(check.error || 'Please enter a genuine, recognizable home address in Gopalganj or Siwan.');
       return;
@@ -83,13 +89,15 @@ export const HomeVisitModal: React.FC<HomeVisitModalProps> = ({
         specialtyRequired,
         symptomBrief: symptomBrief.trim(),
         visitFee,
-        location: verifiedLocation || {
-          latitude: 26.4688,
-          longitude: 84.4441,
-          address: address.trim(),
-          isVerified: true,
-          verifiedAt: Date.now()
-        },
+        location: verifiedLocation
+          ? { ...verifiedLocation, address: address.trim() || verifiedLocation.address || 'Bhitbherwa, Gopalganj, Bihar' }
+          : {
+              latitude: 26.4688,
+              longitude: 84.4441,
+              address: address.trim() || 'Bhitbherwa, Gopalganj, Bihar',
+              isVerified: true,
+              verifiedAt: Date.now()
+            },
         payment: paymentDetails
       });
 
@@ -144,6 +152,31 @@ export const HomeVisitModal: React.FC<HomeVisitModalProps> = ({
                 ₹{visitFee} Only
               </span>
             </div>
+
+            {/* Family Profile Quick Selector */}
+            {userAuth.getFamilyDependants().length > 0 && (
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  Select Family Member for Home Visit
+                </label>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  {userAuth.getFamilyDependants().map((dep) => (
+                    <button
+                      key={dep.id}
+                      type="button"
+                      onClick={() => setPatientName(dep.name)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold whitespace-nowrap border transition-colors cursor-pointer ${
+                        patientName.trim().toLowerCase() === dep.name.trim().toLowerCase()
+                          ? 'bg-blue-50 border-blue-300 text-blue-800 font-bold'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {dep.name} {dep.relationship && dep.relationship !== 'Other' ? `(${dep.relationship})` : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Name & Phone */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

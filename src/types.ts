@@ -24,6 +24,9 @@ export interface GeoLocationData {
   longitude: number;
   accuracy?: number;
   address?: string;
+  locationName?: string;
+  subDistrict?: string;
+  district?: string;
   isVerified: boolean;
   verifiedAt?: number;
 }
@@ -97,27 +100,20 @@ export interface LabBooking {
   payment?: PaymentDetails;
 }
 
+export interface FamilyDependant {
+  id: string;
+  name: string;
+  relationship: 'Self' | 'Spouse' | 'Child' | 'Parent' | 'Sibling' | 'Other';
+  age?: number | string;
+  gender?: 'Male' | 'Female' | 'Other';
+  createdAt?: number;
+}
+
 export type UserRole = 'patient' | 'admin' | 'compounder';
 
 export interface CompounderSession {
   doctorId: string;
   doctorName: string;
-}
-
-export interface MedicineOrder {
-  id: string;
-  userId?: string;
-  patientName: string;
-  patientPhone: string;
-  address: string;
-  medicinesList: string;
-  prescriptionImage?: string;
-  deliveryFee: number;
-  status: 'Pending' | 'Processing' | 'Out for Delivery' | 'Delivered' | 'Cancelled';
-  orderedAt: number;
-  notes?: string;
-  location?: GeoLocationData;
-  payment?: PaymentDetails;
 }
 
 export interface HomeVisitBooking {
@@ -140,7 +136,6 @@ export interface HomeVisitBooking {
 
 export interface AppSettings {
   homeVisitFee: number;
-  medicineDeliveryFee: number;
   supportPhone: string;
   emergencyPhone: string;
   emergencyHelpline?: string;
@@ -155,7 +150,7 @@ export interface PatientFeedback {
   tokenNumber?: number;
   doctorId?: string;
   doctorName?: string;
-  serviceType: 'OPD Consultation' | 'Doctor Home Visit' | 'Diagnostic Lab Test' | 'Medicine Delivery' | 'General Clinic Care';
+  serviceType: 'OPD Consultation' | 'Doctor Home Visit' | 'Diagnostic Lab Test' | 'General Clinic Care';
   rating: number; // 1 to 5
   doctorRating?: number; // 1 to 5
   waitingTimeRating?: number; // 1 to 5

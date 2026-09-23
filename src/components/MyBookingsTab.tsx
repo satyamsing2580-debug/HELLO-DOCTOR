@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Appointment, Doctor, LabBooking, MedicineOrder, HomeVisitBooking } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Appointment, Doctor, LabBooking, HomeVisitBooking, FamilyDependant } from '../types';
 import { 
   CalendarCheck, Clock, CheckCircle, AlertTriangle, XCircle, Stethoscope, 
-  MapPin, User, Activity, FlaskConical, Search, Sparkles, Truck, Home,
-  FileText, Phone, Eye, ShieldCheck, RefreshCw, Banknote, Receipt, Star
+  MapPin, User, Activity, FlaskConical, Search, Sparkles, Home,
+  FileText, Phone, Eye, ShieldCheck, RefreshCw, Banknote, Receipt, Star,
+  Lock, Users, Plus, Shield
 } from 'lucide-react';
 import { userAuth } from '../services/userAuth';
 import { BookingReceiptModal } from './BookingReceiptModal';
@@ -13,7 +14,6 @@ interface Props {
   appointments: Appointment[];
   doctors: Doctor[];
   labBookings: LabBooking[];
-  medicineOrders?: MedicineOrder[];
   homeVisits?: HomeVisitBooking[];
   onNavigateToHome: () => void;
   currentUserPhone?: string;
@@ -24,22 +24,32 @@ export const MyBookingsTab: React.FC<Props> = ({
   appointments,
   doctors,
   labBookings,
-  medicineOrders = [],
   homeVisits = [],
   onNavigateToHome,
   currentUserPhone,
   onUpdateUserPhone
 }) => {
+  // Session phone: strictly locked to the verified patient session
   const [userPhone, setUserPhone] = useState<string>(() => currentUserPhone || userAuth.getUserPhone());
   const [userName, setUserName] = useState<string>(() => userAuth.getUserName());
   const [phoneInput, setPhoneInput] = useState<string>(currentUserPhone || userAuth.getUserPhone());
-  const [isChangingPhone, setIsChangingPhone] = useState<boolean>(!currentUserPhone && !userAuth.getUserPhone());
-  const [activeTab, setActiveTab] = useState<'opd' | 'medicines' | 'home_visits' | 'labs'>('opd');
+  const [activeTab, setActiveTab] = useState<'opd' | 'home_visits' | 'labs'>('opd');
+
+  // Family Dependants strictly under this verified phone account
+  const [dependants, setDependants] = useState<FamilyDependant[]>(() => userAuth.getFamilyDependants());
+  const [selectedFamilyMember, setSelectedFamilyMember] = useState<string>('all');
+  const [showAddDependantModal, setShowAddDependantModal] = useState<boolean>(false);
+  const [newDepName, setNewDepName] = useState('');
+  const [newDepRelation, setNewDepRelation] = useState<'Self' | 'Spouse' | 'Child' | 'Parent' | 'Sibling' | 'Other'>('Child');
+  const [newDepAge, setNewDepAge] = useState('');
+  const [newDepGender, setNewDepGender] = useState<'Male' | 'Female' | 'Other'>('Male');
+  const [addDepError, setAddDepError] = useState<string | null>(null);
+
   const [selectedPrescriptionPreview, setSelectedPrescriptionPreview] = useState<string | null>(null);
   const [selectedReceiptAppointment, setSelectedReceiptAppointment] = useState<Appointment | null>(null);
   const [selectedFeedbackBooking, setSelectedFeedbackBooking] = useState<{
     booking?: any;
-    serviceType: 'OPD Consultation' | 'Doctor Home Visit' | 'Diagnostic Lab Test' | 'Medicine Delivery' | 'General Clinic Care';
+    serviceType: 'OPD Consultation' | 'Doctor Home Visit' | 'Diagnostic Lab Test' | 'General Clinic Care';
     doctorName?: string;
   } | null>(null);
 
@@ -57,70 +67,152 @@ export const MyBookingsTab: React.FC<Props> = ({
       setUserName(state.name);
       if (state.phone) {
         setPhoneInput(state.phone);
+        setDependants(userAuth.getFamilyDependants());
       }
     });
   }, []);
 
+  // One-time session verification for first-time visitors
   const handleApplyPhone = (newPhone: string) => {
-    const clean = newPhone.replace(/\D/g, '').slice(-10);
+    const clean = userAuth.normalizePhone(newPhone);
     if (clean.length === 10) {
       userAuth.setUserIdentity(clean);
       setUserPhone(clean);
       setPhoneInput(clean);
-      setIsChangingPhone(false);
+      setDependants(userAuth.getFamilyDependants());
       onUpdateUserPhone?.(clean);
     }
   };
 
-  const activePhone = userPhone || phoneInput.trim();
+  const handleAddDependantSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddDepError(null);
+    if (!newDepName.trim()) {
+      setAddDepError('Please enter family member name');
+      return;
+    }
+    const added = userAuth.addFamilyDependant({
+      name: newDepName.trim(),
+      relationship: newDepRelation,
+      age: newDepAge.trim() ? Number(newDepAge) : undefined,
+      gender: newDepGender
+    });
+    if (added) {
+      setDependants(userAuth.getFamilyDependants());
+      setSelectedFamilyMember(added.name.toLowerCase());
+      setNewDepName('');
+      setNewDepAge('');
+      setShowAddDependantModal(false);
+    }
+  };
+
+  // Strictly validated active phone from verified session
+  const activePhone = userAuth.normalizePhone(userPhone || currentUserPhone || '');
 
   // Strict separation: User only sees their own appointments, orders, visits & labs
   const isUserBooking = (item: { userId?: string; patientPhone?: string; patientName?: string }) => {
+    if (!activePhone) return false;
     return userAuth.isUserBooking(item, activePhone);
   };
 
-  const filteredAppointments = appointments.filter(isUserBooking);
-  const filteredMedicines = medicineOrders.filter(isUserBooking);
-  const filteredVisits = homeVisits.filter(isUserBooking);
-  const filteredLabs = labBookings.filter(isUserBooking);
+  // Base bookings for this verified phone number
+  const allUserAppointments = useMemo(() => appointments.filter(isUserBooking), [appointments, activePhone]);
+  const allUserVisits = useMemo(() => homeVisits.filter(isUserBooking), [homeVisits, activePhone]);
+  const allUserLabs = useMemo(() => labBookings.filter(isUserBooking), [labBookings, activePhone]);
+
+  const totalUserBookings = 
+    allUserAppointments.length + 
+    allUserVisits.length + 
+    allUserLabs.length;
+
+  // Aggregate all known family profiles under this verified phone account
+  const familyProfiles = useMemo(() => {
+    const profilesMap = new Map<string, { id: string; name: string; relation: string }>();
+
+    // 1. Primary account user
+    const primary = (userName || 'Primary (Self)').trim();
+    profilesMap.set(primary.toLowerCase(), {
+      id: 'primary',
+      name: primary,
+      relation: 'Self'
+    });
+
+    // 2. Saved dependants in userAuth
+    dependants.forEach(d => {
+      profilesMap.set(d.name.trim().toLowerCase(), {
+        id: d.id,
+        name: d.name.trim(),
+        relation: d.relationship
+      });
+    });
+
+    // 3. Any previous bookings under this verified phone with distinct patient names
+    const allRecords = [...allUserAppointments, ...allUserVisits, ...allUserLabs];
+    allRecords.forEach(b => {
+      if (b.patientName && b.patientName.trim()) {
+        const key = b.patientName.trim().toLowerCase();
+        if (!profilesMap.has(key)) {
+          profilesMap.set(key, {
+            id: `auto_${key}`,
+            name: b.patientName.trim(),
+            relation: 'Family'
+          });
+        }
+      }
+    });
+
+    return Array.from(profilesMap.values());
+  }, [dependants, userName, allUserAppointments, allUserVisits, allUserLabs]);
+
+  const getFamilyMemberBookingCount = (memberName: string) => {
+    const target = memberName.trim().toLowerCase();
+    const countApts = allUserAppointments.filter(a => a.patientName?.trim().toLowerCase() === target).length;
+    const countVisits = allUserVisits.filter(v => v.patientName?.trim().toLowerCase() === target).length;
+    const countLabs = allUserLabs.filter(l => l.patientName?.trim().toLowerCase() === target).length;
+    return countApts + countVisits + countLabs;
+  };
+
+  // Filter bookings by selected family member (all strictly within this verified phone!)
+  const matchesFamily = (bookingPatientName?: string) => {
+    if (selectedFamilyMember === 'all') return true;
+    if (!bookingPatientName) return false;
+    return bookingPatientName.trim().toLowerCase() === selectedFamilyMember.trim().toLowerCase();
+  };
+
+  const filteredAppointments = allUserAppointments.filter(a => matchesFamily(a.patientName));
+  const filteredVisits = allUserVisits.filter(v => matchesFamily(v.patientName));
+  const filteredLabs = allUserLabs.filter(l => matchesFamily(l.patientName));
 
   // Doctor lookup map for live token resolution
   const doctorMap = new Map<string, Doctor>();
   doctors.forEach(d => doctorMap.set(d.id, d));
 
-  const totalUserBookings = 
-    filteredAppointments.length + 
-    filteredMedicines.length + 
-    filteredVisits.length + 
-    filteredLabs.length;
-
   return (
     <div className="pb-28 pt-2 px-4 max-w-md mx-auto space-y-4">
       {/* Patient Account & Privacy Header */}
-      {(!userPhone || isChangingPhone) ? (
-        <div className="bg-gradient-to-br from-sky-600 via-sky-700 to-indigo-800 rounded-2xl p-4 text-white shadow-md space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <ShieldCheck className="w-5 h-5 text-sky-200" />
-              <h3 className="font-bold text-xs uppercase tracking-wider text-sky-100">
-                Private Patient Portal
+      {!activePhone ? (
+        <div className="bg-gradient-to-br from-sky-600 via-sky-700 to-indigo-800 rounded-3xl p-5 text-white shadow-lg space-y-3.5 border border-sky-400/40">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+              <Lock className="w-4 h-4 text-sky-100" />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded uppercase tracking-wider text-sky-200">
+                Secure Patient Session
+              </span>
+              <h3 className="font-black text-sm text-white mt-0.5">
+                Private Health Records Access
               </h3>
             </div>
-            {userPhone && (
-              <button 
-                onClick={() => setIsChangingPhone(false)}
-                className="text-[11px] text-sky-200 hover:text-white font-medium cursor-pointer"
-              >
-                Cancel
-              </button>
-            )}
           </div>
+
           <p className="text-xs text-sky-100/90 leading-relaxed">
-            Enter your 10-digit mobile number to access your personal OPD token status, medicine deliveries, and lab test reports.
+            Please enter your 10-digit mobile number once. Your device session will be securely linked to your phone number to show only your verified OPD tokens, doctor home visits, and diagnostic lab reports.
           </p>
+
           <div className="flex gap-2 pt-1">
             <div className="relative flex-1">
-              <span className="absolute left-3 top-2 text-xs text-slate-500 font-bold">+91</span>
+              <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-bold">+91</span>
               <input
                 type="tel"
                 maxLength={10}
@@ -133,44 +225,133 @@ export const MyBookingsTab: React.FC<Props> = ({
             <button
               onClick={() => handleApplyPhone(phoneInput)}
               disabled={phoneInput.replace(/\D/g, '').length < 10}
-              className="px-3 py-2 bg-white text-sky-800 text-xs font-bold rounded-xl hover:bg-sky-50 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+              className="px-3.5 py-2 bg-white text-sky-800 text-xs font-black rounded-xl hover:bg-sky-50 transition-colors disabled:opacity-50 cursor-pointer shadow-xs whitespace-nowrap"
             >
-              Verify & View
+              Verify & Lock
             </button>
+          </div>
+
+          <div className="text-[10px] text-sky-200/90 flex items-center space-x-1.5 pt-0.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+            <span>Encrypted patient confidentiality • No cross-user access allowed</span>
           </div>
         </div>
       ) : (
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-3 shadow-2xs flex items-center justify-between">
-          <div className="flex items-center space-x-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center shrink-0">
-              <User className="w-4 h-4 text-sky-600" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center space-x-1.5">
-                <span className="text-xs font-bold text-slate-800 truncate">
-                  {userName || 'My Bookings'}
-                </span>
-                <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-1.5 py-0.2 rounded-full border border-emerald-200 shrink-0">
-                  +91 {userPhone}
-                </span>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs space-y-3">
+          {/* Verified Session Info - Notice: No arbitrary switch button exists */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-700 border border-sky-100 flex items-center justify-center shrink-0">
+                <User className="w-4 h-4 text-sky-600" />
               </div>
-              <p className="text-[10px] text-slate-500 truncate">
-                {totalUserBookings} active record{totalUserBookings === 1 ? '' : 's'} linked to your device
-              </p>
+              <div className="min-w-0">
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-xs font-black text-slate-900 truncate">
+                    {userName || 'Verified Account'}
+                  </span>
+                  <span className="inline-flex items-center space-x-1 text-[10px] bg-emerald-50 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                    <Lock className="w-2.5 h-2.5 text-emerald-600" />
+                    <span>+91 {activePhone}</span>
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 truncate flex items-center space-x-1 mt-0.5">
+                  <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />
+                  <span>Access locked to verified account • {totalUserBookings} record{totalUserBookings === 1 ? '' : 's'}</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="text-right shrink-0">
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg">
+                Active Session
+              </span>
             </div>
           </div>
 
+          {/* Family Profiles / Dependants (Restricted strictly to the SAME verified phone) */}
+          <div className="pt-2.5 border-t border-slate-100 space-y-1.5">
+            <div className="flex items-center justify-between text-[11px]">
+              <div className="flex items-center space-x-1 text-slate-700 font-bold">
+                <Users className="w-3.5 h-3.5 text-sky-600" />
+                <span>Family Members (Under +91 {activePhone})</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddDependantModal(true)}
+                className="text-[10px] font-bold text-sky-600 hover:text-sky-800 flex items-center space-x-0.5 cursor-pointer bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-200/80 transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add Dependant</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[11px]">
+              <button
+                type="button"
+                onClick={() => setSelectedFamilyMember('all')}
+                className={`px-2.5 py-1 rounded-xl font-bold whitespace-nowrap transition-colors cursor-pointer text-xs flex items-center space-x-1 ${
+                  selectedFamilyMember === 'all'
+                    ? 'bg-sky-600 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <span>All Family</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                  selectedFamilyMember === 'all' ? 'bg-sky-700 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {totalUserBookings}
+                </span>
+              </button>
+
+              {familyProfiles.map((profile) => {
+                const isSelected = selectedFamilyMember === profile.name.toLowerCase();
+                const count = getFamilyMemberBookingCount(profile.name);
+                return (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    onClick={() => setSelectedFamilyMember(profile.name.toLowerCase())}
+                    className={`px-2.5 py-1 rounded-xl whitespace-nowrap transition-colors cursor-pointer text-xs flex items-center space-x-1.5 ${
+                      isSelected
+                        ? 'bg-sky-600 text-white shadow-2xs font-bold'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium'
+                    }`}
+                  >
+                    <span>{profile.name}</span>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                      isSelected ? 'bg-sky-700 text-white' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {profile.relation !== 'Self' && profile.relation !== 'Family' ? `${profile.relation} • ` : ''}{count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Family Member Filter Indicator */}
+      {selectedFamilyMember !== 'all' && (
+        <div className="bg-sky-50 border border-sky-200/80 rounded-xl px-3 py-2 text-xs flex items-center justify-between text-sky-900 animate-in fade-in">
+          <div className="flex items-center space-x-1.5 truncate">
+            <User className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+            <span className="truncate">
+              Showing records for <strong className="font-extrabold capitalize">{selectedFamilyMember}</strong> (Phone: +91 {activePhone})
+            </span>
+          </div>
           <button
-            onClick={() => setIsChangingPhone(true)}
-            className="text-[11px] text-sky-700 hover:text-sky-800 font-semibold px-2 py-1 bg-sky-50 hover:bg-sky-100 rounded-lg cursor-pointer transition-colors shrink-0 ml-2"
+            type="button"
+            onClick={() => setSelectedFamilyMember('all')}
+            className="text-[11px] font-bold text-sky-700 hover:text-sky-900 underline shrink-0 cursor-pointer ml-2"
           >
-            Switch
+            Show All
           </button>
         </div>
       )}
 
-      {/* Tab Switcher: 4 Healthcare Service Modules (Strictly shows count for this user!) */}
-      <div className="grid grid-cols-4 bg-slate-200/80 p-1 rounded-2xl gap-0.5 text-xs font-bold">
+      {/* Tab Switcher: 3 Healthcare Service Modules (Strictly shows count for this user!) */}
+      <div className="grid grid-cols-3 bg-slate-200/80 p-1 rounded-2xl gap-0.5 text-xs font-bold">
         <button
           onClick={() => setActiveTab('opd')}
           className={`py-2 px-1 rounded-xl transition-all cursor-pointer flex flex-col items-center justify-center text-[11px] ${
@@ -181,18 +362,6 @@ export const MyBookingsTab: React.FC<Props> = ({
         >
           <CalendarCheck className="w-3.5 h-3.5 text-sky-600 mb-0.5" />
           <span className="truncate w-full text-center">OPD ({filteredAppointments.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('medicines')}
-          className={`py-2 px-1 rounded-xl transition-all cursor-pointer flex flex-col items-center justify-center text-[11px] ${
-            activeTab === 'medicines'
-              ? 'bg-white text-slate-900 shadow-xs'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Truck className="w-3.5 h-3.5 text-emerald-600 mb-0.5" />
-          <span className="truncate w-full text-center">Dawai ({filteredMedicines.length})</span>
         </button>
 
         <button
@@ -226,16 +395,32 @@ export const MyBookingsTab: React.FC<Props> = ({
           {filteredAppointments.length === 0 ? (
             <div className="bg-white rounded-2xl p-8 text-center border border-slate-200 shadow-xs">
               <CalendarCheck className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-              <h3 className="font-extrabold text-slate-800 text-sm">No OPD Bookings Found</h3>
+              <h3 className="font-extrabold text-slate-800 text-sm">
+                {selectedFamilyMember !== 'all' 
+                  ? `No OPD Bookings for ${selectedFamilyMember}` 
+                  : 'No OPD Bookings Found'}
+              </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                No active appointments booked yet. Browse our verified doctor list and book an appointment with live token tracking.
+                {selectedFamilyMember !== 'all'
+                  ? `There are no OPD doctor appointments registered under ${selectedFamilyMember} for your verified account (+91 ${activePhone}).`
+                  : 'No active appointments booked yet. Browse our verified doctor list and book an appointment with live token tracking.'}
               </p>
-              <button
-                onClick={onNavigateToHome}
-                className="mt-4 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
-              >
-                Find & Book Doctor
-              </button>
+              <div className="mt-4 flex items-center justify-center gap-2">
+                {selectedFamilyMember !== 'all' && (
+                  <button
+                    onClick={() => setSelectedFamilyMember('all')}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    View All Family
+                  </button>
+                )}
+                <button
+                  onClick={onNavigateToHome}
+                  className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
+                >
+                  Find & Book Doctor
+                </button>
+              </div>
             </div>
           ) : (
             filteredAppointments.map((apt) => {
@@ -332,6 +517,13 @@ export const MyBookingsTab: React.FC<Props> = ({
                         <span>{apt.bookingDate} • {apt.timeSlot}</span>
                       </div>
                     </div>
+
+                    {apt.location?.address && (
+                      <div className="flex items-center space-x-1.5 text-[11px] text-slate-500 bg-slate-50/60 px-2.5 py-1.5 rounded-xl border border-slate-100">
+                        <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span className="truncate">Patient Location: <strong className="text-slate-700 font-semibold">{apt.location.address}</strong></span>
+                      </div>
+                    )}
 
                     {/* Pending Notice if not yet confirmed */}
                     {apt.status === 'Pending' && (
@@ -449,119 +641,38 @@ export const MyBookingsTab: React.FC<Props> = ({
         </div>
       )}
 
-      {/* MODULE 2: MEDICINE HOME DELIVERY ORDERS */}
-      {activeTab === 'medicines' && (
-        <div className="space-y-4">
-          {filteredMedicines.length === 0 ? (
-            <div className="bg-white rounded-2xl p-8 text-center border border-slate-200 shadow-xs">
-              <Truck className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-              <h3 className="font-extrabold text-slate-800 text-sm">No Medicine Orders Found</h3>
-              <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                Need medicines delivered home? Order directly from the home tab with doctor prescription upload.
-              </p>
-              <button
-                onClick={onNavigateToHome}
-                className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
-              >
-                Order Medicines Now
-              </button>
-            </div>
-          ) : (
-            filteredMedicines.map((order) => (
-              <div
-                key={order.id}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden"
-              >
-                {/* Header with Status */}
-                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
-                  <div className="flex items-center space-x-1.5 font-bold">
-                    <Truck className="w-4 h-4 text-emerald-600" />
-                    <span>Order #{order.id.slice(-6)}</span>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                    order.status === 'Delivered'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : order.status === 'Out for Delivery'
-                      ? 'bg-blue-100 text-blue-800 animate-pulse'
-                      : order.status === 'Processing'
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-slate-200 text-slate-800'
-                  }`}>
-                    {order.status}
-                  </span>
-                </div>
-
-                <div className="p-4 space-y-2.5 text-xs">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-extrabold text-sm text-slate-900">{order.patientName}</h4>
-                      <p className="text-slate-500 flex items-center space-x-1 mt-0.5">
-                        <Phone className="w-3 h-3 text-slate-400" />
-                        <span>{order.patientPhone}</span>
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] text-slate-400 uppercase font-semibold">Delivery Fee</span>
-                      <p className="font-black text-emerald-700 text-sm">₹{order.deliveryFee}</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 p-2.5 rounded-xl space-y-1">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">Delivery Address</span>
-                    <p className="text-slate-700">{order.address}</p>
-                  </div>
-
-                  <div className="bg-slate-50 p-2.5 rounded-xl space-y-1">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">Medicines / Notes</span>
-                    <p className="text-slate-800 whitespace-pre-line">{order.medicinesList}</p>
-                  </div>
-
-                  {order.prescriptionImage && (
-                    <div className="flex items-center justify-between p-2.5 bg-emerald-50 border border-emerald-100 rounded-xl">
-                      <div className="flex items-center space-x-2">
-                        <img
-                          src={order.prescriptionImage}
-                          alt="Prescription"
-                          className="w-10 h-10 object-cover rounded-lg border border-emerald-200 cursor-pointer"
-                          onClick={() => setSelectedPrescriptionPreview(order.prescriptionImage || null)}
-                        />
-                        <div>
-                          <span className="text-[11px] font-bold text-emerald-900 block">Uploaded Parchi</span>
-                          <span className="text-[10px] text-emerald-700">Verified by pharmacy team</span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setSelectedPrescriptionPreview(order.prescriptionImage || null)}
-                        className="px-2.5 py-1 text-xs font-bold text-emerald-800 hover:bg-emerald-100 rounded-lg flex items-center space-x-1 cursor-pointer"
-                      >
-                        <Eye className="w-3 h-3" />
-                        <span>View</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {/* MODULE 3: DOCTOR HOME VISITS */}
+      {/* MODULE 2: DOCTOR HOME VISITS */}
       {activeTab === 'home_visits' && (
         <div className="space-y-4">
           {filteredVisits.length === 0 ? (
             <div className="bg-white rounded-2xl p-8 text-center border border-slate-200 shadow-xs">
               <Home className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-              <h3 className="font-extrabold text-slate-800 text-sm">No Home Visits Booked</h3>
+              <h3 className="font-extrabold text-slate-800 text-sm">
+                {selectedFamilyMember !== 'all'
+                  ? `No Home Visits for ${selectedFamilyMember}`
+                  : 'No Home Visits Booked'}
+              </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                Need a certified MBBS specialist doctor to examine a patient at home? Book a home consultation.
+                {selectedFamilyMember !== 'all'
+                  ? `There are no home visits scheduled under ${selectedFamilyMember} for your verified account (+91 ${activePhone}).`
+                  : 'Need a certified MBBS specialist doctor to examine a patient at home? Book a home consultation.'}
               </p>
-              <button
-                onClick={onNavigateToHome}
-                className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
-              >
-                Book Home Visit
-              </button>
+              <div className="mt-4 flex items-center justify-center gap-2">
+                {selectedFamilyMember !== 'all' && (
+                  <button
+                    onClick={() => setSelectedFamilyMember('all')}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    View All Family
+                  </button>
+                )}
+                <button
+                  onClick={onNavigateToHome}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
+                >
+                  Book Home Visit
+                </button>
+              </div>
             </div>
           ) : (
             filteredVisits.map((visit) => (
@@ -656,16 +767,32 @@ export const MyBookingsTab: React.FC<Props> = ({
           {filteredLabs.length === 0 ? (
             <div className="bg-white rounded-2xl p-8 text-center border border-slate-200 shadow-xs">
               <FlaskConical className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-              <h3 className="font-extrabold text-slate-800 text-sm">No Lab Test Bookings</h3>
+              <h3 className="font-extrabold text-slate-800 text-sm">
+                {selectedFamilyMember !== 'all'
+                  ? `No Lab Test Bookings for ${selectedFamilyMember}`
+                  : 'No Lab Test Bookings'}
+              </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                Book blood tests, full body health packages, and diabetes tests with home sample collection.
+                {selectedFamilyMember !== 'all'
+                  ? `There are no diagnostic lab test orders registered under ${selectedFamilyMember} for your verified account (+91 ${activePhone}).`
+                  : 'Book blood tests, full body health packages, and diabetes tests with home sample collection.'}
               </p>
-              <button
-                onClick={onNavigateToHome}
-                className="mt-4 px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
-              >
-                Browse Lab Tests
-              </button>
+              <div className="mt-4 flex items-center justify-center gap-2">
+                {selectedFamilyMember !== 'all' && (
+                  <button
+                    onClick={() => setSelectedFamilyMember('all')}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    View All Family
+                  </button>
+                )}
+                <button
+                  onClick={onNavigateToHome}
+                  className="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
+                >
+                  Browse Lab Tests
+                </button>
+              </div>
             </div>
           ) : (
             filteredLabs.map((booking) => (
@@ -777,6 +904,143 @@ export const MyBookingsTab: React.FC<Props> = ({
           onClose={() => setSelectedFeedbackBooking(null)}
           onSuccess={() => setSelectedFeedbackBooking(null)}
         />
+      )}
+
+      {/* Add Family Dependant Modal (strictly locked to the user's verified phone account) */}
+      {showAddDependantModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 space-y-3.5 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center">
+                  <Users className="w-4 h-4 text-sky-600" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900">Add Family Member</h3>
+                  <span className="text-[10px] text-slate-500">Same Account Dependant</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddDependantModal(false);
+                  setAddDepError(null);
+                }}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-sky-50/80 border border-sky-200/70 rounded-xl p-2.5 text-[11px] text-sky-950 space-y-1">
+              <div className="flex items-center space-x-1.5 font-bold text-sky-900">
+                <Lock className="w-3.5 h-3.5 text-sky-700 shrink-0" />
+                <span>Account Protection Guarantee</span>
+              </div>
+              <p className="text-slate-600 text-[10px] leading-relaxed">
+                This dependant is strictly registered under your verified number (<strong className="text-slate-800 font-bold">+91 {activePhone}</strong>). All appointments, tokens, and records will be securely linked to this account.
+              </p>
+            </div>
+
+            {addDepError && (
+              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center space-x-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                <span>{addDepError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAddDependantSubmit} className="space-y-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  Full Name of Patient *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Aarav Singh"
+                  value={newDepName}
+                  onChange={(e) => setNewDepName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Relationship
+                  </label>
+                  <select
+                    value={newDepRelation}
+                    onChange={(e) => setNewDepRelation(e.target.value as any)}
+                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500/20 cursor-pointer"
+                  >
+                    <option value="Child">Child (Son/Daughter)</option>
+                    <option value="Spouse">Spouse (Wife/Husband)</option>
+                    <option value="Parent">Parent (Father/Mother)</option>
+                    <option value="Sibling">Sibling (Brother/Sister)</option>
+                    <option value="Other">Other Family Member</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Age (Years)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="120"
+                    placeholder="e.g. 8"
+                    value={newDepAge}
+                    onChange={(e) => setNewDepAge(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  Gender
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['Male', 'Female', 'Other'] as const).map((g) => (
+                    <button
+                      type="button"
+                      key={g}
+                      onClick={() => setNewDepGender(g)}
+                      className={`py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                        newDepGender === g
+                          ? 'bg-sky-50 border-sky-300 text-sky-800'
+                          : 'bg-slate-50 border-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddDependantModal(false);
+                    setAddDepError(null);
+                  }}
+                  className="px-3 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-black rounded-xl shadow-xs cursor-pointer"
+                >
+                  Save Member Profile
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

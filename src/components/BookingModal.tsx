@@ -53,13 +53,18 @@ export const BookingModal: React.FC<Props> = ({ doctor, onClose, onSuccess }) =>
       return;
     }
 
-    // Strict location & address validation for Indus Appstore compliance
+    // Strict location & address validation for Indus Appstore & Play Store compliance
     if (!patientAddress.trim()) {
       setErrorMsg('Please provide patient address and verify your GPS location.');
       return;
     }
 
-    const addrCheck = locationService.validateAddress(patientAddress, !!verifiedLocation?.isVerified);
+    if (!verifiedLocation || !verifiedLocation.isVerified) {
+      setErrorMsg('Real-time GPS verification is required. Please tap "Detect Current GPS Location" above to verify your location.');
+      return;
+    }
+
+    const addrCheck = locationService.validateAddress(patientAddress, true);
     if (!addrCheck.isValid) {
       setErrorMsg(addrCheck.error || 'Please enter a genuine, recognizable address in Gopalganj or Siwan.');
       return;
@@ -84,13 +89,15 @@ export const BookingModal: React.FC<Props> = ({ doctor, onClose, onSuccess }) =>
         bookingDate,
         timeSlot,
         symptomBrief: symptoms,
-        location: verifiedLocation || {
-          latitude: 26.4688,
-          longitude: 84.4441,
-          address: patientAddress.trim(),
-          isVerified: true,
-          verifiedAt: Date.now()
-        },
+        location: verifiedLocation
+          ? { ...verifiedLocation, address: patientAddress.trim() || verifiedLocation.address || 'Bhitbherwa, Gopalganj, Bihar' }
+          : {
+              latitude: 26.4688,
+              longitude: 84.4441,
+              address: patientAddress.trim() || 'Bhitbherwa, Gopalganj, Bihar',
+              isVerified: true,
+              verifiedAt: Date.now()
+            },
         payment: paymentDetails
       });
 
@@ -169,6 +176,34 @@ export const BookingModal: React.FC<Props> = ({ doctor, onClose, onSuccess }) =>
             </div>
 
             {/* Patient Details */}
+            {userAuth.getFamilyDependants().length > 0 && (
+              <div className="space-y-1.5 pb-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  Select Patient (Family Profiles)
+                </label>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  {userAuth.getFamilyDependants().map((dep) => (
+                    <button
+                      key={dep.id}
+                      type="button"
+                      onClick={() => {
+                        setPatientName(dep.name);
+                        if (dep.age) setPatientAge(String(dep.age));
+                        if (dep.gender) setPatientGender(dep.gender as any);
+                      }}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold whitespace-nowrap border transition-colors cursor-pointer ${
+                        patientName.trim().toLowerCase() === dep.name.trim().toLowerCase()
+                          ? 'bg-sky-50 border-sky-300 text-sky-800 font-bold'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {dep.name} {dep.relationship && dep.relationship !== 'Other' ? `(${dep.relationship})` : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
                 Patient Full Name *

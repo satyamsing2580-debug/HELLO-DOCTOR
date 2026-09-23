@@ -5,12 +5,12 @@ import {
 } from 'lucide-react';
 import { realtimeDb } from '../services/realtimeDb';
 import { userAuth } from '../services/userAuth';
-import { Appointment, HomeVisitBooking, LabBooking, MedicineOrder } from '../types';
+import { Appointment, HomeVisitBooking, LabBooking } from '../types';
 
 interface Props {
   onClose: () => void;
-  booking?: Appointment | HomeVisitBooking | LabBooking | MedicineOrder | null;
-  defaultServiceType?: 'OPD Consultation' | 'Doctor Home Visit' | 'Diagnostic Lab Test' | 'Medicine Delivery' | 'General Clinic Care';
+  booking?: Appointment | HomeVisitBooking | LabBooking | null;
+  defaultServiceType?: 'OPD Consultation' | 'Doctor Home Visit' | 'Diagnostic Lab Test' | 'General Clinic Care';
   defaultDoctorName?: string;
   onSuccess?: () => void;
 }
@@ -40,7 +40,7 @@ export const PostVisitFeedbackModal: React.FC<Props> = ({
   };
 
   const [serviceType, setServiceType] = useState<
-    'OPD Consultation' | 'Doctor Home Visit' | 'Diagnostic Lab Test' | 'Medicine Delivery' | 'General Clinic Care'
+    'OPD Consultation' | 'Doctor Home Visit' | 'Diagnostic Lab Test' | 'General Clinic Care'
   >(defaultServiceType);
   const [doctorName, setDoctorName] = useState<string>(inferDoctorName());
   const [patientName, setPatientName] = useState<string>(inferPatientName());
@@ -218,7 +218,6 @@ export const PostVisitFeedbackModal: React.FC<Props> = ({
                     <option value="OPD Consultation">OPD Consultation (Clinic Visit)</option>
                     <option value="Doctor Home Visit">Doctor Home Visit</option>
                     <option value="Diagnostic Lab Test">Diagnostic Lab Test / Blood Sample</option>
-                    <option value="Medicine Delivery">Prescription Medicine Delivery</option>
                     <option value="General Clinic Care">General Clinic Care / Reception Service</option>
                   </select>
                 </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Doctor, Appointment, LabBooking, MedicineOrder, HomeVisitBooking, AppSettings, LabTest, PatientFeedback } from '../types';
+import { Doctor, Appointment, LabBooking, HomeVisitBooking, AppSettings, LabTest, PatientFeedback } from '../types';
 import { realtimeDb } from '../services/realtimeDb';
 import { sirenManager } from '../services/audioSiren';
 import { DoctorEditModal } from './DoctorEditModal';
@@ -7,7 +7,7 @@ import { LabTestEditModal } from './LabTestEditModal';
 import { 
   TrendingUp, Users, CalendarCheck, Clock, CheckCircle2, XCircle, 
   PlusCircle, Edit3, Trash2, BellRing, VolumeX, ShieldAlert,
-  ArrowUpRight, Stethoscope, Search, RefreshCw, Truck, Home,
+  ArrowUpRight, Stethoscope, Search, RefreshCw, Home,
   DollarSign, Sliders, Eye, Save, Phone, MapPin, Check,
   FlaskConical, ClipboardList, Sparkles, Tag, CheckCircle, Star, MessageSquare
 } from 'lucide-react';
@@ -16,7 +16,6 @@ interface Props {
   doctors: Doctor[];
   appointments: Appointment[];
   labBookings: LabBooking[];
-  medicineOrders?: MedicineOrder[];
   homeVisits?: HomeVisitBooking[];
   appSettings: AppSettings;
   labTests: LabTest[];
@@ -29,7 +28,6 @@ export const GroupAdminDashboard: React.FC<Props> = ({
   doctors,
   appointments,
   labBookings,
-  medicineOrders = [],
   homeVisits = [],
   appSettings,
   labTests,
@@ -37,7 +35,7 @@ export const GroupAdminDashboard: React.FC<Props> = ({
   onAcknowledgeAlarm,
   onExit
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'verification' | 'medicines' | 'home_visits' | 'lab_orders' | 'lab_tests' | 'feedbacks' | 'pricing' | 'doctors' | 'financial'>('verification');
+  const [activeSubTab, setActiveSubTab] = useState<'verification' | 'home_visits' | 'lab_orders' | 'lab_tests' | 'feedbacks' | 'pricing' | 'doctors' | 'financial'>('verification');
   const [appointmentFilter, setAppointmentFilter] = useState<'pending' | 'all' | 'confirmed' | 'cancelled'>('pending');
   const [doctorToEdit, setDoctorToEdit] = useState<Doctor | null>(null);
   const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
@@ -141,7 +139,6 @@ export const GroupAdminDashboard: React.FC<Props> = ({
   });
 
   const pendingAppointments = appointments.filter(a => a.status === 'Pending');
-  const pendingMedicines = medicineOrders.filter(m => m.status === 'Pending');
   const pendingVisits = homeVisits.filter(v => v.status === 'Pending');
   const pendingLabBookings = labBookings.filter(l => l.status === 'Pending' || l.status === 'Confirmed');
 
@@ -220,11 +217,6 @@ export const GroupAdminDashboard: React.FC<Props> = ({
 
   const handleCancel = async (id: string) => {
     await realtimeDb.cancelAppointment(id);
-  };
-
-  // Medicine Order Status
-  const handleUpdateMedicineStatus = async (id: string, status: MedicineOrder['status']) => {
-    await realtimeDb.updateMedicineOrderStatus(id, status);
   };
 
   // Home Visit Status & Doctor Assignment
@@ -352,23 +344,6 @@ export const GroupAdminDashboard: React.FC<Props> = ({
           {pendingAppointments.length > 0 && (
             <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-black ml-1">
               {pendingAppointments.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('medicines')}
-          className={`px-3 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center space-x-1.5 ${
-            activeSubTab === 'medicines'
-              ? 'bg-emerald-600 text-white shadow-xs'
-              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Truck className="w-3.5 h-3.5" />
-          <span>Medicines</span>
-          {pendingMedicines.length > 0 && (
-            <span className="bg-emerald-800 text-white text-[10px] px-1.5 py-0.2 rounded-full font-black ml-1">
-              {pendingMedicines.length}
             </span>
           )}
         </button>
@@ -683,104 +658,7 @@ export const GroupAdminDashboard: React.FC<Props> = ({
         </div>
       )}
 
-      {/* SUBTAB 2: MEDICINE ORDERS MANAGEMENT */}
-      {activeSubTab === 'medicines' && (
-        <div className="space-y-4">
-          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start space-x-2">
-            <Truck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-bold">Medicine Home Delivery Orders: </span>
-              <span className="text-[11px] text-emerald-800">
-                Verify prescription images and dispatch medicines to patient addresses. Updates sync in real-time.
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {medicineOrders.length === 0 ? (
-              <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
-                <Truck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <p className="font-bold text-slate-700 text-sm">No medicine orders yet</p>
-              </div>
-            ) : (
-              medicineOrders.map((order) => (
-                <div
-                  key={order.id}
-                  className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs space-y-3"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${
-                        order.status === 'Delivered'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : order.status === 'Out for Delivery'
-                          ? 'bg-blue-100 text-blue-800 animate-pulse'
-                          : order.status === 'Processing'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-slate-200 text-slate-800'
-                      }`}>
-                        {order.status}
-                      </span>
-                      <h4 className="font-extrabold text-sm text-slate-900 mt-1">
-                        {order.patientName}
-                      </h4>
-                      <p className="text-xs text-slate-500">Phone: {order.patientPhone}</p>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-sm font-black text-emerald-700">₹{order.deliveryFee}</span>
-                      <span className="text-[10px] text-slate-400 block">Delivery Fee</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 p-2.5 rounded-xl text-xs space-y-1">
-                    <p className="text-slate-700"><span className="font-bold">Address:</span> {order.address}</p>
-                    <p className="text-slate-800"><span className="font-bold">Medicines:</span> {order.medicinesList}</p>
-                  </div>
-
-                  {order.prescriptionImage && (
-                    <div className="flex items-center justify-between p-2 bg-emerald-50 rounded-xl border border-emerald-100 text-xs">
-                      <div className="flex items-center space-x-2">
-                        <img
-                          src={order.prescriptionImage}
-                          alt="Prescription"
-                          className="w-10 h-10 object-cover rounded-lg border border-emerald-200"
-                        />
-                        <span className="font-bold text-emerald-900">Doctor Prescription Attached</span>
-                      </div>
-                      <button
-                        onClick={() => setPreviewPrescription(order.prescriptionImage || null)}
-                        className="px-2.5 py-1 bg-white border border-emerald-200 text-emerald-800 font-bold rounded-lg text-xs hover:bg-emerald-100 cursor-pointer"
-                      >
-                        Zoom View
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Status update buttons */}
-                  <div className="pt-1 flex flex-wrap gap-1.5 text-xs">
-                    {(['Pending', 'Processing', 'Out for Delivery', 'Delivered', 'Cancelled'] as MedicineOrder['status'][]).map(st => (
-                      <button
-                        key={st}
-                        onClick={() => handleUpdateMedicineStatus(order.id, st)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-all ${
-                          order.status === st
-                            ? 'bg-slate-900 text-white shadow-2xs'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                        }`}
-                      >
-                        {st}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* SUBTAB 3: DOCTOR HOME VISITS MANAGEMENT */}
+      {/* SUBTAB 2: DOCTOR HOME VISITS MANAGEMENT */}
       {activeSubTab === 'home_visits' && (
         <div className="space-y-4">
           <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-start space-x-2">
@@ -1381,7 +1259,6 @@ export const GroupAdminDashboard: React.FC<Props> = ({
                 { id: 'OPD Consultation', label: 'OPD' },
                 { id: 'Doctor Home Visit', label: 'Home Visit' },
                 { id: 'Diagnostic Lab Test', label: 'Lab Test' },
-                { id: 'Medicine Delivery', label: 'Medicines' },
               ].map((s) => (
                 <button
                   key={s.id}
@@ -1602,48 +1479,26 @@ export const GroupAdminDashboard: React.FC<Props> = ({
 
           <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs space-y-4 text-xs">
             <h4 className="font-extrabold text-sm text-slate-900 border-b border-slate-100 pb-2">
-              Service Delivery Fees
+              Doctor Home Visit Pricing
             </h4>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Medicine Delivery Fee (₹)
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 font-bold text-slate-400">₹</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="5"
-                    value={editingSettings.medicineDeliveryFee}
-                    onChange={(e) => setEditingSettings({
-                      ...editingSettings,
-                      medicineDeliveryFee: parseInt(e.target.value, 10) || 0
-                    })}
-                    className="w-full pl-7 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Doctor Home Visit Fee (₹)
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 font-bold text-slate-400">₹</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="50"
-                    value={editingSettings.homeVisitFee}
-                    onChange={(e) => setEditingSettings({
-                      ...editingSettings,
-                      homeVisitFee: parseInt(e.target.value, 10) || 0
-                    })}
-                    className="w-full pl-7 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-                  />
-                </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Doctor Home Visit Fee (₹)
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 font-bold text-slate-400">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={editingSettings.homeVisitFee}
+                  onChange={(e) => setEditingSettings({
+                    ...editingSettings,
+                    homeVisitFee: parseInt(e.target.value, 10) || 0
+                  })}
+                  className="w-full pl-7 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                />
               </div>
             </div>
 

@@ -3,7 +3,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { 
-  Doctor, Appointment, LabTest, LabBooking, MedicineOrder, HomeVisitBooking, AppSettings,
+  Doctor, Appointment, LabTest, LabBooking, HomeVisitBooking, AppSettings,
   GeoLocationData, PaymentDetails, PatientFeedback
 } from '../types';
 import { sirenManager } from './audioSiren';
@@ -739,7 +739,6 @@ const INITIAL_FEEDBACKS: PatientFeedback[] = [
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
   homeVisitFee: 499,
-  medicineDeliveryFee: 40,
   supportPhone: '9771264784',
   emergencyPhone: '7091472879',
   emergencyHelpline: '7091472879'
@@ -749,7 +748,6 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
 class HelloDoctorRealtimeDB {
   private doctors: Doctor[] = [];
   private appointments: Appointment[] = [];
-  private medicineOrders: MedicineOrder[] = [];
   private homeVisits: HomeVisitBooking[] = [];
   private labTests: LabTest[] = [];
   private labBookings: LabBooking[] = [];
@@ -759,7 +757,6 @@ class HelloDoctorRealtimeDB {
 
   private doctorListeners: Set<(doctors: Doctor[]) => void> = new Set();
   private appointmentListeners: Set<(appointments: Appointment[]) => void> = new Set();
-  private medicineOrderListeners: Set<(orders: MedicineOrder[]) => void> = new Set();
   private homeVisitListeners: Set<(visits: HomeVisitBooking[]) => void> = new Set();
   private labTestListeners: Set<(tests: LabTest[]) => void> = new Set();
   private labBookingListeners: Set<(bookings: LabBooking[]) => void> = new Set();
@@ -780,9 +777,6 @@ class HelloDoctorRealtimeDB {
       const storedApts = localStorage.getItem('hd_appointments_v5');
       this.appointments = storedApts ? JSON.parse(storedApts) : INITIAL_APPOINTMENTS;
 
-      const storedMedOrders = localStorage.getItem('hd_med_orders_v5');
-      this.medicineOrders = storedMedOrders ? JSON.parse(storedMedOrders) : [];
-
       const storedHomeVisits = localStorage.getItem('hd_home_visits_v5');
       this.homeVisits = storedHomeVisits ? JSON.parse(storedHomeVisits) : [];
 
@@ -800,7 +794,6 @@ class HelloDoctorRealtimeDB {
     } catch {
       this.doctors = INITIAL_DOCTORS;
       this.appointments = INITIAL_APPOINTMENTS;
-      this.medicineOrders = [];
       this.homeVisits = [];
       this.labTests = INITIAL_LAB_TESTS;
       this.labBookings = INITIAL_LAB_BOOKINGS;
@@ -813,7 +806,6 @@ class HelloDoctorRealtimeDB {
     try {
       localStorage.setItem('hd_doctors_v5', JSON.stringify(this.doctors));
       localStorage.setItem('hd_appointments_v5', JSON.stringify(this.appointments));
-      localStorage.setItem('hd_med_orders_v5', JSON.stringify(this.medicineOrders));
       localStorage.setItem('hd_home_visits_v5', JSON.stringify(this.homeVisits));
       localStorage.setItem('hd_labtests_v5', JSON.stringify(this.labTests));
       localStorage.setItem('hd_labbookings_v5', JSON.stringify(this.labBookings));
@@ -856,16 +848,7 @@ class HelloDoctorRealtimeDB {
       this.checkPendingAlarmState();
     }, (err) => console.info('Firestore appointments listener (offline mode):', err?.message || err));
 
-    // 3. Medicine Home Delivery Orders Live Sync
-    onSnapshot(collection(db, 'medicine_orders'), (snapshot) => {
-      this.medicineOrders = snapshot.docs
-        .map(d => ({ id: d.id, ...d.data() } as MedicineOrder))
-        .sort((a, b) => (b.orderedAt || 0) - (a.orderedAt || 0));
-      this.saveToStorage();
-      this.medicineOrderListeners.forEach(cb => cb([...this.medicineOrders]));
-    }, (err) => console.info('Firestore medicine_orders listener (offline mode):', err?.message || err));
-
-    // 4. Doctor Home Visits Live Sync
+    // 3. Doctor Home Visits Live Sync
     onSnapshot(collection(db, 'home_visits'), (snapshot) => {
       this.homeVisits = snapshot.docs
         .map(d => ({ id: d.id, ...d.data() } as HomeVisitBooking))
@@ -970,12 +953,6 @@ class HelloDoctorRealtimeDB {
     this.appointmentListeners.add(callback);
     callback([...this.appointments]);
     return () => this.appointmentListeners.delete(callback);
-  }
-
-  public subscribeMedicineOrders(callback: (orders: MedicineOrder[]) => void): () => void {
-    this.medicineOrderListeners.add(callback);
-    callback([...this.medicineOrders]);
-    return () => this.medicineOrderListeners.delete(callback);
   }
 
   public subscribeHomeVisits(callback: (visits: HomeVisitBooking[]) => void): () => void {
@@ -1084,69 +1061,6 @@ class HelloDoctorRealtimeDB {
         snapshot.docs.forEach(d => userMap.set(d.id, { id: d.id, ...d.data() } as Appointment));
         notify();
       }, (err) => console.info('User appointments userId query notice:', err));
-      unsubs.push(unsubUser);
-    }
-
-    return () => {
-      unsubs.forEach(u => u());
-    };
-  }
-
-  public subscribeUserMedicineOrders(
-    phone: string,
-    userId: string | undefined,
-    callback: (orders: MedicineOrder[]) => void
-  ): () => void {
-    const cleanPhone = userAuth.normalizePhone(phone);
-    const validUserId = (userId || '').trim();
-
-    if (!cleanPhone && !validUserId) {
-      callback([]);
-      return () => {};
-    }
-
-    const unsubs: (() => void)[] = [];
-    const phoneMap = new Map<string, MedicineOrder>();
-    const userMap = new Map<string, MedicineOrder>();
-
-    const notify = () => {
-      const merged = new Map<string, MedicineOrder>();
-      phoneMap.forEach((v, k) => merged.set(k, v));
-      userMap.forEach((v, k) => merged.set(k, v));
-      const list = Array.from(merged.values()).sort((a, b) => (b.orderedAt || 0) - (a.orderedAt || 0));
-      callback(list);
-    };
-
-    const localMatches = this.medicineOrders.filter(m => userAuth.isUserBooking(m, cleanPhone));
-    if (localMatches.length > 0) {
-      localMatches.forEach(m => userMap.set(m.id, m));
-      notify();
-    }
-
-    if (cleanPhone) {
-      const phoneVariants = [
-        cleanPhone,
-        `+91${cleanPhone}`,
-        `+91 ${cleanPhone}`,
-        `+91-${cleanPhone}`,
-        `0${cleanPhone}`
-      ];
-      const qPhone = query(collection(db, 'medicine_orders'), where('patientPhone', 'in', phoneVariants));
-      const unsubPhone = onSnapshot(qPhone, (snapshot) => {
-        phoneMap.clear();
-        snapshot.docs.forEach(d => phoneMap.set(d.id, { id: d.id, ...d.data() } as MedicineOrder));
-        notify();
-      }, (err) => console.info('User medicine orders query notice:', err));
-      unsubs.push(unsubPhone);
-    }
-
-    if (validUserId) {
-      const qUser = query(collection(db, 'medicine_orders'), where('userId', '==', validUserId));
-      const unsubUser = onSnapshot(qUser, (snapshot) => {
-        userMap.clear();
-        snapshot.docs.forEach(d => userMap.set(d.id, { id: d.id, ...d.data() } as MedicineOrder));
-        notify();
-      }, (err) => console.info('User medicine orders userId query notice:', err));
       unsubs.push(unsubUser);
     }
 
@@ -1572,67 +1486,6 @@ class HelloDoctorRealtimeDB {
     sirenManager.stopSiren();
   }
 
-  // Medicine Home Delivery Orders
-  public async orderMedicines(data: {
-    userId?: string;
-    patientName: string;
-    patientPhone: string;
-    address: string;
-    medicinesList: string;
-    prescriptionImage?: string;
-    deliveryFee?: number;
-    location?: GeoLocationData;
-    payment?: PaymentDetails;
-  }): Promise<MedicineOrder> {
-    const orderId = `med-order-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const activeUserId = data.userId || userAuth.getUserId();
-    userAuth.setUserIdentity(data.patientPhone, data.patientName);
-
-    const newOrder: MedicineOrder = {
-      id: orderId,
-      userId: activeUserId,
-      patientName: data.patientName.trim(),
-      patientPhone: data.patientPhone.trim(),
-      address: data.address.trim(),
-      medicinesList: data.medicinesList.trim(),
-      prescriptionImage: data.prescriptionImage,
-      deliveryFee: data.deliveryFee ?? this.appSettings.medicineDeliveryFee,
-      status: 'Pending',
-      orderedAt: Date.now(),
-      location: data.location,
-      payment: data.payment
-    };
-
-    // Instant local memory update
-    this.medicineOrders.unshift(newOrder);
-    this.saveToStorage();
-    this.medicineOrderListeners.forEach(cb => cb([...this.medicineOrders]));
-
-    try {
-      await setDoc(doc(db, 'medicine_orders', orderId), cleanDataForFirestore(newOrder), { merge: true });
-    } catch (e) {
-      console.info('Medicine order cached locally:', e);
-    }
-    return newOrder;
-  }
-
-  public async updateMedicineOrderStatus(orderId: string, status: MedicineOrder['status']): Promise<void> {
-    const order = this.medicineOrders.find(o => o.id === orderId);
-    if (order) {
-      order.status = status;
-      this.saveToStorage();
-      this.medicineOrderListeners.forEach(cb => cb([...this.medicineOrders]));
-    }
-    try {
-      await setDoc(doc(db, 'medicine_orders', orderId), cleanDataForFirestore({
-        ...(order || {}),
-        status
-      }), { merge: true });
-    } catch (e) {
-      console.warn('updateMedicineOrderStatus sync notice:', e);
-    }
-  }
-
   // Doctor Home Visit Service
   public async bookHomeVisit(data: {
     userId?: string;
@@ -1905,7 +1758,6 @@ class HelloDoctorRealtimeDB {
 
     return {
       appointments: this.appointments.filter(a => userAuth.isUserBooking(a, phone)),
-      medicineOrders: this.medicineOrders.filter(m => userAuth.isUserBooking(m, phone)),
       homeVisits: this.homeVisits.filter(h => userAuth.isUserBooking(h, phone)),
       labBookings: this.labBookings.filter(l => userAuth.isUserBooking(l, phone)),
     };
@@ -1927,10 +1779,9 @@ class HelloDoctorRealtimeDB {
       .reduce((sum, a) => sum + (a.consultationFee || 0), 0);
 
     const labRevenue = this.labBookings.reduce((sum, l) => sum + (l.price || 0), 0);
-    const medicineRevenue = this.medicineOrders.reduce((sum, m) => sum + (m.deliveryFee || 0), 0);
     const homeVisitRevenue = this.homeVisits.reduce((sum, v) => sum + (v.visitFee || 0), 0);
 
-    const totalRevenue = opdRevenue + labRevenue + medicineRevenue + homeVisitRevenue;
+    const totalRevenue = opdRevenue + labRevenue + homeVisitRevenue;
 
     const doctorEarningsMap: Record<string, { name: string; count: number; revenue: number; specialty: string }> = {};
     confirmedAppointments.forEach(a => {
@@ -1950,7 +1801,6 @@ class HelloDoctorRealtimeDB {
       totalRevenue,
       opdRevenue,
       labRevenue,
-      medicineRevenue,
       homeVisitRevenue,
       todayRevenue,
       pendingRevenue,
@@ -1959,7 +1809,6 @@ class HelloDoctorRealtimeDB {
       pendingCount: pendingAppointments.length,
       cancelledCount: cancelledAppointments.length,
       doctorEarnings: Object.values(doctorEarningsMap),
-      totalMedicineOrders: this.medicineOrders.length,
       totalHomeVisits: this.homeVisits.length
     };
   }

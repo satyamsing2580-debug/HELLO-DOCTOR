@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Doctor, Appointment, LabTest, LabBooking, MedicineOrder, HomeVisitBooking, AppSettings, UserRole } from './types';
+import { Doctor, Appointment, LabTest, LabBooking, HomeVisitBooking, AppSettings, UserRole } from './types';
 import { realtimeDb } from './services/realtimeDb';
 import { MobileAppHeader } from './components/MobileAppHeader';
 import { BottomNavigation, TabType } from './components/BottomNavigation';
@@ -25,7 +25,6 @@ export default function App() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [labTests, setLabTests] = useState<LabTest[]>([]);
   const [labBookings, setLabBookings] = useState<LabBooking[]>([]);
-  const [medicineOrders, setMedicineOrders] = useState<MedicineOrder[]>([]);
   const [homeVisits, setHomeVisits] = useState<HomeVisitBooking[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>(realtimeDb.getAppSettings());
   const [hasActiveAlarm, setHasActiveAlarm] = useState(false);
@@ -50,7 +49,6 @@ export default function App() {
     });
 
     let unsubApts: () => void;
-    let unsubMeds: () => void;
     let unsubVisits: () => void;
     let unsubLabs: () => void;
 
@@ -58,9 +56,6 @@ export default function App() {
       // Patient data fetch query: filtered directly by user phone or unique User ID
       unsubApts = realtimeDb.subscribeUserAppointments(userPhoneState, userAuth.getUserId(), (userApts) => {
         setAppointments(userApts);
-      });
-      unsubMeds = realtimeDb.subscribeUserMedicineOrders(userPhoneState, userAuth.getUserId(), (userMeds) => {
-        setMedicineOrders(userMeds);
       });
       unsubVisits = realtimeDb.subscribeUserHomeVisits(userPhoneState, userAuth.getUserId(), (userVisits) => {
         setHomeVisits(userVisits);
@@ -72,9 +67,6 @@ export default function App() {
       // Staff (Group Admin / Compounder) accesses global hospital bookings
       unsubApts = realtimeDb.subscribeAppointments((allApts) => {
         setAppointments(allApts);
-      });
-      unsubMeds = realtimeDb.subscribeMedicineOrders((allMeds) => {
-        setMedicineOrders(allMeds);
       });
       unsubVisits = realtimeDb.subscribeHomeVisits((allVisits) => {
         setHomeVisits(allVisits);
@@ -90,7 +82,6 @@ export default function App() {
       unsubAppSettings();
       unsubAlarm();
       unsubApts?.();
-      unsubMeds?.();
       unsubVisits?.();
       unsubLabs?.();
     };
@@ -122,7 +113,6 @@ export default function App() {
   // Active bookings count strictly for the current user (confirmed or pending)
   const activeBookingCount = 
     appointments.filter((a) => userAuth.isUserBooking(a, userPhoneState) && (a.status === 'Confirmed' || a.status === 'Pending')).length +
-    medicineOrders.filter((m) => userAuth.isUserBooking(m, userPhoneState) && m.status !== 'Delivered' && m.status !== 'Cancelled').length +
     homeVisits.filter((h) => userAuth.isUserBooking(h, userPhoneState) && h.status !== 'Completed' && h.status !== 'Cancelled').length;
 
   return (
@@ -146,7 +136,6 @@ export default function App() {
               doctors={doctors}
               appointments={appointments}
               labBookings={labBookings}
-              medicineOrders={medicineOrders}
               homeVisits={homeVisits}
               appSettings={appSettings}
               labTests={labTests}
@@ -178,13 +167,17 @@ export default function App() {
                   appointments={appointments}
                   doctors={doctors}
                   labBookings={labBookings}
-                  medicineOrders={medicineOrders}
                   homeVisits={homeVisits}
                   onNavigateToHome={() => setActiveTab('home')}
                   currentUserPhone={userPhoneState}
                   onUpdateUserPhone={(phone) => {
-                    userAuth.setUserIdentity(phone);
-                    setUserPhoneState(phone);
+                    if (phone) {
+                      userAuth.setUserIdentity(phone);
+                      setUserPhoneState(phone);
+                    } else {
+                      userAuth.clearUserIdentity();
+                      setUserPhoneState('');
+                    }
                   }}
                 />
               )}

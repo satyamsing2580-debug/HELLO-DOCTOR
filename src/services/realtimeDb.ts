@@ -818,9 +818,9 @@ class HelloDoctorRealtimeDB {
 
   // Active Real-Time Firestore Synchronization
   private initFirestoreSync() {
-    // 1. Doctors Live Sync & Auto-Seed
+    // 1. Doctors Live Sync & Auto-Seed (Only seed if server explicitly returns empty, never from offline cache)
     onSnapshot(collection(db, 'doctors'), async (snapshot) => {
-      if (snapshot.empty) {
+      if (snapshot.empty && !snapshot.metadata.fromCache) {
         try {
           const batch = writeBatch(db);
           INITIAL_DOCTORS.forEach(docItem => {
@@ -831,7 +831,7 @@ class HelloDoctorRealtimeDB {
         } catch (e) {
           console.warn('Firestore doctors seed notice:', e);
         }
-      } else {
+      } else if (!snapshot.empty) {
         this.doctors = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Doctor));
         this.saveToStorage();
         this.doctorListeners.forEach(cb => cb([...this.doctors]));
@@ -859,7 +859,7 @@ class HelloDoctorRealtimeDB {
 
     // 5. Diagnostic Lab Tests Live Sync & Auto-Seed
     onSnapshot(collection(db, 'lab_tests'), async (snapshot) => {
-      if (snapshot.empty) {
+      if (snapshot.empty && !snapshot.metadata.fromCache) {
         try {
           const batch = writeBatch(db);
           INITIAL_LAB_TESTS.forEach(testItem => {
@@ -870,7 +870,7 @@ class HelloDoctorRealtimeDB {
         } catch (e) {
           console.info('Firestore lab tests seed notice:', e);
         }
-      } else {
+      } else if (!snapshot.empty) {
         this.labTests = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as LabTest));
         this.saveToStorage();
         this.labTestListeners.forEach(cb => cb([...this.labTests]));
@@ -892,7 +892,7 @@ class HelloDoctorRealtimeDB {
         this.appSettings = { ...DEFAULT_APP_SETTINGS, ...snapshot.data() } as AppSettings;
         this.saveToStorage();
         this.appSettingsListeners.forEach(cb => cb({ ...this.appSettings }));
-      } else {
+      } else if (!snapshot.metadata.fromCache) {
         try {
           await setDoc(doc(db, 'app_settings', 'pricing'), DEFAULT_APP_SETTINGS);
         } catch (e) {

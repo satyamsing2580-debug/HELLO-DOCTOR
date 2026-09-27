@@ -1,42 +1,42 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <!-- Homepage -->
+  <!-- Home Page -->
   <url>
-    <loc>https://hellodocotrrr.vercel.app/</loc>
-    <lastmod>2026-03-27</lastmod>
+    <loc>https://hellodoctorrr.vercel.app/</loc>
+    <lastmod>2026-09-27</lastmod>
     <changefreq>daily</changefreq>
-    <priority>1.00</priority>
+    <priority>1.0</priority>
   </url>
 
-  <!-- About Page (yadi aapke paas hai) -->
+  <!-- Doctors Page -->
   <url>
-    <loc>https://hellodocotrrr.vercel.app/about</loc>
-    <lastmod>2026-03-27</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.80</priority>
-  </url>
-
-  <!-- Contact / Support Page -->
-  <url>
-    <loc>https://hellodocotrrr.vercel.app/contact</loc>
-    <lastmod>2026-03-27</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.80</priority>
-  </url>
-
-  <!-- Doctors / Services Page -->
-  <url>
-    <loc>https://hellodocotrrr.vercel.app/doctors</loc>
-    <lastmod>2026-03-27</lastmod>
+    <loc>https://hellodoctorrr.vercel.app/doctors</loc>
+    <lastmod>2026-09-27</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.80</priority>
+    <priority>0.8</priority>
   </url>
 
-  <!-- Appointment / Booking Page -->
+  <!-- Services Page -->
   <url>
-    <loc>https://hellodocotrrr.vercel.app/appointment</loc>
-    <lastmod>2026-03-27</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.80</priority>
+    <loc>https://hellodoctorrr.vercel.app/services</loc>
+    <lastmod>2026-09-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- About Us Page -->
+  <url>
+    <loc>https://hellodoctorrr.vercel.app/about</loc>
+    <lastmod>2026-09-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <!-- Contact Us Page -->
+  <url>
+    <loc>https://hellodoctorrr.vercel.app/contact</loc>
+    <lastmod>2026-09-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
   </url>
 </urlset>

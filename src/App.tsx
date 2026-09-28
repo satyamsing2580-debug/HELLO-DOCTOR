@@ -12,6 +12,7 @@ import { GroupAdminDashboard } from './components/GroupAdminDashboard';
 import { CompounderDashboard } from './components/CompounderDashboard';
 import { sirenManager } from './services/audioSiren';
 import { userAuth } from './services/userAuth';
+import { OfflineIndicator } from './components/OfflineIndicator';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -119,6 +120,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 flex justify-center text-slate-900 font-sans">
       {/* Mobile-Frame Container (Optimized for Median Native Webview & Mobile APK) */}
       <div className="w-full max-w-md min-h-screen bg-slate-50 flex flex-col relative shadow-xl overflow-x-hidden border-x border-slate-200/60">
+        <OfflineIndicator />
         {/* Mobile Header with App-like styling & Live Alert Bar */}
         <MobileAppHeader
           currentRole={currentRole}

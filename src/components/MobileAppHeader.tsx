@@ -1,5 +1,5 @@
 import React from 'react';
-import { Stethoscope, ShieldCheck, UserCheck, BellRing, VolumeX } from 'lucide-react';
+import { Stethoscope, BellRing, VolumeX } from 'lucide-react';
 import { UserRole } from '../types';
 
 interface Props {

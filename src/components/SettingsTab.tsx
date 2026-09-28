@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { 
   Phone, Shield, FileText, PhoneCall, MapPin, ShieldCheck, 
-  ChevronRight, X, Siren, CalendarCheck, Sparkles, AlertCircle, Info, Heart, Mail, MessageSquare, Star
+  ChevronRight, X, Siren, CalendarCheck, Sparkles, AlertCircle, Info, Heart, Mail, MessageSquare, Star,
+  Download, Smartphone
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { PostVisitFeedbackModal } from './PostVisitFeedbackModal';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 
 interface Props {
   appSettings?: AppSettings;
@@ -14,6 +16,7 @@ interface Props {
 export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) => {
   const [activeModal, setActiveModal] = useState<'privacy' | 'terms' | null>(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
+  const { triggerInstall, isInstalled } = usePWAInstall();
 
   const phone1 = appSettings?.supportPhone || '9771264784';
   const phone2 = appSettings?.emergencyPhone || '7091472879';
@@ -258,6 +261,38 @@ export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) 
               <span className="font-extrabold text-sm text-slate-900">Terms & Services</span>
               <p className="text-xs text-slate-500 mt-0.5">
                 OPD token protocols, doctor consultation guidelines & policies
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-slate-700" />
+        </button>
+
+        {/* Install Mobile App (Strictly located in Settings under Terms of Service) */}
+        <button
+          onClick={() => {
+            triggerInstall();
+          }}
+          className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors group cursor-pointer text-left"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-teal-500 text-white flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs">
+              <Download className="w-5 h-5 stroke-[2.2]" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-1.5">
+                <span className="font-extrabold text-sm text-slate-900">Install Mobile App</span>
+                {isInstalled ? (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                    Installed
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">
+                    Direct 1-Tap
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Install Hello Doctor directly to your phone for instant OPD access
               </p>
             </div>
           </div>

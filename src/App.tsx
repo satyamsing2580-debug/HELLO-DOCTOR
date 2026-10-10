@@ -13,6 +13,8 @@ import { CompounderDashboard } from './components/CompounderDashboard';
 import { sirenManager } from './services/audioSiren';
 import { userAuth } from './services/userAuth';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { useNativeBackButton } from './hooks/useNativeBackButton';
+import { nativeBridge } from './services/nativeBridge';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -20,6 +22,14 @@ export default function App() {
   const [compounderDoctorName, setCompounderDoctorName] = useState<string>('');
   const [isStaffLoginOpen, setIsStaffLoginOpen] = useState(false);
   const [userPhoneState, setUserPhoneState] = useState<string>(() => userAuth.getUserPhone());
+
+  // Android Hardware Back button & Gesture navigation for Median / Web2App wrapper
+  useNativeBackButton({
+    activeTab,
+    setActiveTab,
+    isModalOpen: isStaffLoginOpen,
+    onCloseModal: () => setIsStaffLoginOpen(false),
+  });
 
   // Real-time synced data state
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -99,8 +109,11 @@ export default function App() {
     realtimeDb.acknowledgeAlarm();
   };
 
-  const handleLoginSuccess = (role: UserRole) => {
+  const handleLoginSuccess = (role: UserRole, doctorName?: string) => {
     setCurrentRole(role);
+    if (doctorName) {
+      setCompounderDoctorName(doctorName);
+    }
     setIsStaffLoginOpen(false);
   };
 
@@ -149,6 +162,7 @@ export default function App() {
             <CompounderDashboard
               doctors={doctors}
               appointments={appointments}
+              initialDoctorName={compounderDoctorName}
               onExit={handleLogoutStaff}
               onDoctorSelected={(name) => setCompounderDoctorName(name)}
             />
@@ -201,11 +215,14 @@ export default function App() {
           )}
         </main>
 
-        {/* Bottom Navigation (Only visible for Patient mode) */}
+        {/* Bottom Navigation */}
         {currentRole === 'patient' && (
           <BottomNavigation
             activeTab={activeTab}
-            onChangeTab={(tab) => setActiveTab(tab)}
+            onChangeTab={(tab) => {
+              nativeBridge.haptic(15);
+              setActiveTab(tab);
+            }}
             activeBookingCount={activeBookingCount}
           />
         )}
@@ -213,6 +230,7 @@ export default function App() {
         {/* Staff Authentication Modal */}
         {isStaffLoginOpen && (
           <StaffLoginModal
+            doctors={doctors}
             onClose={() => setIsStaffLoginOpen(false)}
             onLoginSuccess={handleLoginSuccess}
           />

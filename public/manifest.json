@@ -1,16 +1,21 @@
 {
   "id": "/",
-  "name": "Hello Doctor - OPD & Healthcare",
-  "short_name": "Hello Doctor",
-  "description": "Live OPD token tracking, doctor appointment booking, and diagnostic lab tests.",
+  "name": "HELLO DOCTOR",
+  "short_name": "HelloDoctor",
+  "description": "Hospital OPD tokens, doctor consultations, and lab test bookings.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
+  "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#0284c7",
-  "categories": ["medical", "health", "lifestyle"],
   "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
     {
       "src": "/pwa-192x192.png",
       "sizes": "192x192",

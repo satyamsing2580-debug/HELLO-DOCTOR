@@ -4,21 +4,39 @@ import {
 import { db } from './firebase';
 import { 
   Doctor, Appointment, LabTest, LabBooking, HomeVisitBooking, AppSettings,
-  GeoLocationData, PaymentDetails, PatientFeedback
+  GeoLocationData, PaymentDetails, PatientFeedback,
+  PromoBanner, CouponCode, PlatformUser
 } from '../types';
 import { sirenManager } from './audioSiren';
 import { userAuth } from './userAuth';
 
 // Secure credentials kept strictly within authentication logic
-const ADMIN_SECURITY_HASH = '9771264784';
+const ADMIN_SECURITY_HASH = '97712647845';
 const COMPOUNDER_SECURITY_HASH = '90073555062';
 
 export const verifyAdminCredential = (pass: string): boolean => {
   return pass.trim() === ADMIN_SECURITY_HASH;
 };
 
+// Global fallback compounder credential
 export const verifyCompounderCredential = (pass: string): boolean => {
   return pass.trim() === COMPOUNDER_SECURITY_HASH;
+};
+
+// Doctor-specific compounder credential verification
+export const verifyDoctorCompounderCredential = (doctorId: string, pass: string): boolean => {
+  const cleanPass = pass.trim();
+  if (!cleanPass) return false;
+  // If master compounder password entered, allow access
+  if (cleanPass === COMPOUNDER_SECURITY_HASH || cleanPass === ADMIN_SECURITY_HASH) {
+    return true;
+  }
+  const doctor = realtimeDb.getDoctorById(doctorId);
+  if (doctor && doctor.compounderPassword) {
+    return doctor.compounderPassword.trim() === cleanPass;
+  }
+  // Default doctor password format: "doc" + roomNumber or 1234
+  return cleanPass === '1234' || cleanPass === '123456';
 };
 
 /**
@@ -703,37 +721,133 @@ const INITIAL_LAB_TESTS: LabTest[] = [
 const INITIAL_APPOINTMENTS: Appointment[] = [];
 const INITIAL_LAB_BOOKINGS: LabBooking[] = [];
 
-const INITIAL_FEEDBACKS: PatientFeedback[] = [
+const INITIAL_PROMO_BANNERS: PromoBanner[] = [
   {
-    id: 'fb-1',
-    patientName: 'Rameshwar Singh',
-    patientPhone: '9835012345',
-    doctorName: 'Dr. Akhilesh Kumar',
-    serviceType: 'OPD Consultation',
-    rating: 5,
-    doctorRating: 5,
-    waitingTimeRating: 4,
-    staffRating: 5,
-    cleanlinessRating: 5,
-    comments: 'Doctor Akhilesh Kumar listened very patiently to my diabetes history. The live token system saved my family 2 hours of waiting!',
-    createdAt: Date.now() - 86400000 * 2,
-    adminStatus: 'Reviewed',
-    adminNotes: 'Noted with thanks. Patient treated for Type 2 Diabetes.'
+    id: 'banner-1',
+    title: '🏥 LIVE OPD Token Booking Now Active',
+    subtitle: 'Track current patient token live from home. Avoid hospital waiting lines in Gopalganj & Siwan.',
+    badge: 'NEW OPD FEATURE',
+    type: 'banner',
+    gradientFrom: 'from-sky-600',
+    gradientTo: 'to-blue-700',
+    linkTab: 'home',
+    buttonText: 'Book OPD Token',
+    isActive: true,
+    priority: 1,
+    createdAt: Date.now() - 86400000 * 3
   },
   {
-    id: 'fb-2',
-    patientName: 'Poonam Devi',
-    patientPhone: '9431098765',
-    doctorName: 'Dr. Amrita Kumari',
-    serviceType: 'OPD Consultation',
-    rating: 5,
-    doctorRating: 5,
-    waitingTimeRating: 5,
-    staffRating: 5,
-    cleanlinessRating: 4,
-    comments: 'Very respectful compounder and clear guidance at room OPD-2. Best clinic in Gopalganj.',
-    createdAt: Date.now() - 86400000,
-    adminStatus: 'New'
+    id: 'banner-2',
+    title: '🔬 Flat ₹100 OFF on Complete Diagnostic Health Checkup',
+    subtitle: 'NABL Certified Diagnostic Lab tests with home sample collection across Sadar Hospital & Siwan.',
+    badge: 'HEALTH FEST',
+    type: 'banner',
+    gradientFrom: 'from-teal-600',
+    gradientTo: 'to-emerald-700',
+    linkTab: 'labtests',
+    buttonText: 'Order Lab Test',
+    isActive: true,
+    priority: 2,
+    createdAt: Date.now() - 86400000 * 2
+  },
+  {
+    id: 'ticker-1',
+    title: '⚡ OPD Notice: Dr. Akhilesh Kumar & Dr. Amrita Kumari OPD is LIVE today. Tokens advancing smoothly.',
+    type: 'ticker',
+    badge: 'LIVE TICKER',
+    isActive: true,
+    priority: 1,
+    createdAt: Date.now() - 86400000
+  }
+];
+
+const INITIAL_COUPONS: CouponCode[] = [
+  {
+    id: 'coupon-1',
+    code: 'FLAT50',
+    description: 'Instant ₹50 Discount on any OPD or Diagnostic Booking',
+    discountType: 'fixed',
+    discountValue: 50,
+    minBookingValue: 200,
+    usedCount: 14,
+    usageLimit: 500,
+    expiryDate: '2026-12-31',
+    isActive: true,
+    applicableServices: ['all'],
+    createdAt: Date.now() - 86400000 * 5
+  },
+  {
+    id: 'coupon-2',
+    code: 'HELLODOCTOR',
+    description: 'Special 15% OFF for first-time patient consultation',
+    discountType: 'percentage',
+    discountValue: 15,
+    minBookingValue: 300,
+    maxDiscount: 150,
+    usedCount: 28,
+    usageLimit: 1000,
+    expiryDate: '2026-12-31',
+    isActive: true,
+    applicableServices: ['opd', 'home_visit'],
+    createdAt: Date.now() - 86400000 * 4
+  },
+  {
+    id: 'coupon-3',
+    code: 'FREEOPD',
+    description: 'Free Follow-up OPD Consultation Voucher',
+    discountType: 'fixed',
+    discountValue: 100,
+    minBookingValue: 350,
+    usedCount: 5,
+    usageLimit: 100,
+    expiryDate: '2026-11-30',
+    isActive: true,
+    applicableServices: ['opd'],
+    createdAt: Date.now() - 86400000 * 2
+  }
+];
+
+const INITIAL_USERS: PlatformUser[] = [
+  {
+    id: 'usr_admin',
+    phone: '97712647845',
+    name: 'Super Admin Master',
+    role: 'admin',
+    status: 'active',
+    totalBookings: 0,
+    lastActive: Date.now(),
+    createdAt: Date.now() - 86400000 * 30
+  },
+  {
+    id: 'usr_comp_1',
+    phone: '90073555062',
+    name: 'OPD Reception Staff',
+    role: 'compounder',
+    status: 'active',
+    assignedDoctorName: 'Dr. Akhilesh Kumar',
+    totalBookings: 0,
+    lastActive: Date.now() - 3600000,
+    createdAt: Date.now() - 86400000 * 20
+  },
+  {
+    id: 'usr_pat_1',
+    phone: '9835012345',
+    name: 'Rameshwar Singh',
+    role: 'patient',
+    status: 'active',
+    totalBookings: 3,
+    lastActive: Date.now() - 7200000,
+    createdAt: Date.now() - 86400000 * 15
+  },
+  {
+    id: 'usr_pat_2',
+    phone: '9431098765',
+    name: 'Poonam Devi',
+    role: 'patient',
+    status: 'active',
+    totalBookings: 2,
+    lastActive: Date.now() - 14400000,
+    createdAt: Date.now() - 86400000 * 10
   }
 ];
 
@@ -752,6 +866,9 @@ class HelloDoctorRealtimeDB {
   private labTests: LabTest[] = [];
   private labBookings: LabBooking[] = [];
   private feedbacks: PatientFeedback[] = [];
+  private promoBanners: PromoBanner[] = [];
+  private coupons: CouponCode[] = [];
+  private users: PlatformUser[] = [];
   private appSettings: AppSettings = DEFAULT_APP_SETTINGS;
   private hasActiveAlarm: boolean = false;
 
@@ -761,6 +878,9 @@ class HelloDoctorRealtimeDB {
   private labTestListeners: Set<(tests: LabTest[]) => void> = new Set();
   private labBookingListeners: Set<(bookings: LabBooking[]) => void> = new Set();
   private feedbackListeners: Set<(feedbacks: PatientFeedback[]) => void> = new Set();
+  private bannerListeners: Set<(banners: PromoBanner[]) => void> = new Set();
+  private couponListeners: Set<(coupons: CouponCode[]) => void> = new Set();
+  private userListeners: Set<(users: PlatformUser[]) => void> = new Set();
   private appSettingsListeners: Set<(settings: AppSettings) => void> = new Set();
   private alarmListeners: Set<(hasActiveAlarm: boolean) => void> = new Set();
 
@@ -787,7 +907,16 @@ class HelloDoctorRealtimeDB {
       this.labBookings = storedLabBooks ? JSON.parse(storedLabBooks) : INITIAL_LAB_BOOKINGS;
 
       const storedFeedbacks = localStorage.getItem('hd_feedbacks_v1');
-      this.feedbacks = storedFeedbacks ? JSON.parse(storedFeedbacks) : INITIAL_FEEDBACKS;
+      this.feedbacks = storedFeedbacks ? JSON.parse(storedFeedbacks) : [];
+
+      const storedBanners = localStorage.getItem('hd_banners_v1');
+      this.promoBanners = storedBanners ? JSON.parse(storedBanners) : INITIAL_PROMO_BANNERS;
+
+      const storedCoupons = localStorage.getItem('hd_coupons_v1');
+      this.coupons = storedCoupons ? JSON.parse(storedCoupons) : INITIAL_COUPONS;
+
+      const storedUsers = localStorage.getItem('hd_users_v1');
+      this.users = storedUsers ? JSON.parse(storedUsers) : INITIAL_USERS;
 
       const storedSettings = localStorage.getItem('hd_settings_v5');
       this.appSettings = storedSettings ? JSON.parse(storedSettings) : DEFAULT_APP_SETTINGS;
@@ -797,7 +926,10 @@ class HelloDoctorRealtimeDB {
       this.homeVisits = [];
       this.labTests = INITIAL_LAB_TESTS;
       this.labBookings = INITIAL_LAB_BOOKINGS;
-      this.feedbacks = INITIAL_FEEDBACKS;
+      this.feedbacks = [];
+      this.promoBanners = INITIAL_PROMO_BANNERS;
+      this.coupons = INITIAL_COUPONS;
+      this.users = INITIAL_USERS;
       this.appSettings = DEFAULT_APP_SETTINGS;
     }
   }
@@ -810,6 +942,9 @@ class HelloDoctorRealtimeDB {
       localStorage.setItem('hd_labtests_v5', JSON.stringify(this.labTests));
       localStorage.setItem('hd_labbookings_v5', JSON.stringify(this.labBookings));
       localStorage.setItem('hd_feedbacks_v1', JSON.stringify(this.feedbacks));
+      localStorage.setItem('hd_banners_v1', JSON.stringify(this.promoBanners));
+      localStorage.setItem('hd_coupons_v1', JSON.stringify(this.coupons));
+      localStorage.setItem('hd_users_v1', JSON.stringify(this.users));
       localStorage.setItem('hd_settings_v5', JSON.stringify(this.appSettings));
     } catch (e) {
       console.warn('Local storage write warning:', e);
@@ -920,6 +1055,69 @@ class HelloDoctorRealtimeDB {
         this.feedbackListeners.forEach(cb => cb([...this.feedbacks]));
       }
     }, (err) => console.info('Firestore patient_feedbacks listener (offline mode):', err?.message || err));
+
+    // 10. Promo Banners & Announcements Live Sync
+    onSnapshot(collection(db, 'promo_banners'), async (snapshot) => {
+      if (snapshot.empty && !snapshot.metadata.fromCache) {
+        try {
+          const batch = writeBatch(db);
+          INITIAL_PROMO_BANNERS.forEach(banner => {
+            batch.set(doc(db, 'promo_banners', banner.id), banner);
+          });
+          await batch.commit();
+        } catch (e) {
+          console.info('Firestore banners seed notice:', e);
+        }
+      } else if (!snapshot.empty) {
+        this.promoBanners = snapshot.docs
+          .map(d => ({ id: d.id, ...d.data() } as PromoBanner))
+          .sort((a, b) => a.priority - b.priority);
+        this.saveToStorage();
+        this.bannerListeners.forEach(cb => cb([...this.promoBanners]));
+      }
+    }, (err) => console.info('Firestore promo_banners listener:', err?.message || err));
+
+    // 11. Dynamic Coupons Live Sync
+    onSnapshot(collection(db, 'coupons'), async (snapshot) => {
+      if (snapshot.empty && !snapshot.metadata.fromCache) {
+        try {
+          const batch = writeBatch(db);
+          INITIAL_COUPONS.forEach(coupon => {
+            batch.set(doc(db, 'coupons', coupon.id), coupon);
+          });
+          await batch.commit();
+        } catch (e) {
+          console.info('Firestore coupons seed notice:', e);
+        }
+      } else if (!snapshot.empty) {
+        this.coupons = snapshot.docs
+          .map(d => ({ id: d.id, ...d.data() } as CouponCode))
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        this.saveToStorage();
+        this.couponListeners.forEach(cb => cb([...this.coupons]));
+      }
+    }, (err) => console.info('Firestore coupons listener:', err?.message || err));
+
+    // 12. Registered Users Live Sync
+    onSnapshot(collection(db, 'platform_users'), async (snapshot) => {
+      if (snapshot.empty && !snapshot.metadata.fromCache) {
+        try {
+          const batch = writeBatch(db);
+          INITIAL_USERS.forEach(u => {
+            batch.set(doc(db, 'platform_users', u.id), u);
+          });
+          await batch.commit();
+        } catch (e) {
+          console.info('Firestore users seed notice:', e);
+        }
+      } else if (!snapshot.empty) {
+        this.users = snapshot.docs
+          .map(d => ({ id: d.id, ...d.data() } as PlatformUser))
+          .sort((a, b) => (b.lastActive || 0) - (a.lastActive || 0));
+        this.saveToStorage();
+        this.userListeners.forEach(cb => cb([...this.users]));
+      }
+    }, (err) => console.info('Firestore users listener:', err?.message || err));
   }
 
   // Check if any unacknowledged pending appointments exist
@@ -941,6 +1139,36 @@ class HelloDoctorRealtimeDB {
 
   public getFeedbacks(): PatientFeedback[] {
     return [...this.feedbacks];
+  }
+
+  public subscribePromoBanners(callback: (banners: PromoBanner[]) => void): () => void {
+    this.bannerListeners.add(callback);
+    callback([...this.promoBanners]);
+    return () => this.bannerListeners.delete(callback);
+  }
+
+  public getPromoBanners(): PromoBanner[] {
+    return [...this.promoBanners];
+  }
+
+  public subscribeCoupons(callback: (coupons: CouponCode[]) => void): () => void {
+    this.couponListeners.add(callback);
+    callback([...this.coupons]);
+    return () => this.couponListeners.delete(callback);
+  }
+
+  public getCoupons(): CouponCode[] {
+    return [...this.coupons];
+  }
+
+  public subscribeUsers(callback: (users: PlatformUser[]) => void): () => void {
+    this.userListeners.add(callback);
+    callback([...this.users]);
+    return () => this.userListeners.delete(callback);
+  }
+
+  public getUsers(): PlatformUser[] {
+    return [...this.users];
   }
 
   public subscribeDoctors(callback: (doctors: Doctor[]) => void): () => void {
@@ -1867,6 +2095,223 @@ class HelloDoctorRealtimeDB {
     } catch (err) {
       console.info('Firestore feedback status update notice:', err);
     }
+  }
+
+  // Doctor Compounder Password Management
+  public async updateDoctorPassword(doctorId: string, newPassword: string): Promise<void> {
+    const docItem = this.doctors.find(d => d.id === doctorId);
+    if (docItem) {
+      docItem.compounderPassword = newPassword.trim();
+      this.saveToStorage();
+      this.doctorListeners.forEach(cb => cb([...this.doctors]));
+    }
+    try {
+      await setDoc(doc(db, 'doctors', doctorId), {
+        compounderPassword: newPassword.trim()
+      }, { merge: true });
+    } catch (e) {
+      console.warn('updateDoctorPassword notice:', e);
+    }
+  }
+
+  // Promo Banners & Announcements CMS
+  public async addPromoBanner(bannerData: Omit<PromoBanner, 'id' | 'createdAt'>): Promise<PromoBanner> {
+    const bannerId = `banner-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const newBanner: PromoBanner = {
+      ...bannerData,
+      id: bannerId,
+      createdAt: Date.now()
+    };
+    this.promoBanners.unshift(newBanner);
+    this.saveToStorage();
+    this.bannerListeners.forEach(cb => cb([...this.promoBanners]));
+
+    try {
+      await setDoc(doc(db, 'promo_banners', bannerId), cleanDataForFirestore(newBanner), { merge: true });
+    } catch (e) {
+      console.warn('addPromoBanner error:', e);
+    }
+    return newBanner;
+  }
+
+  public async updatePromoBanner(bannerId: string, update: Partial<PromoBanner>): Promise<void> {
+    const index = this.promoBanners.findIndex(b => b.id === bannerId);
+    if (index !== -1) {
+      this.promoBanners[index] = { ...this.promoBanners[index], ...update };
+      this.saveToStorage();
+      this.bannerListeners.forEach(cb => cb([...this.promoBanners]));
+    }
+    try {
+      await setDoc(doc(db, 'promo_banners', bannerId), cleanDataForFirestore(update), { merge: true });
+    } catch (e) {
+      console.warn('updatePromoBanner error:', e);
+    }
+  }
+
+  public async deletePromoBanner(bannerId: string): Promise<void> {
+    this.promoBanners = this.promoBanners.filter(b => b.id !== bannerId);
+    this.saveToStorage();
+    this.bannerListeners.forEach(cb => cb([...this.promoBanners]));
+
+    try {
+      await deleteDoc(doc(db, 'promo_banners', bannerId));
+    } catch (e) {
+      console.warn('deletePromoBanner error:', e);
+    }
+  }
+
+  // Dynamic Coupon Engine
+  public async addCoupon(couponData: Omit<CouponCode, 'id' | 'createdAt' | 'usedCount'>): Promise<CouponCode> {
+    const couponId = `coupon-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const newCoupon: CouponCode = {
+      ...couponData,
+      id: couponId,
+      code: couponData.code.trim().toUpperCase(),
+      usedCount: 0,
+      createdAt: Date.now()
+    };
+    this.coupons.unshift(newCoupon);
+    this.saveToStorage();
+    this.couponListeners.forEach(cb => cb([...this.coupons]));
+
+    try {
+      await setDoc(doc(db, 'coupons', couponId), cleanDataForFirestore(newCoupon), { merge: true });
+    } catch (e) {
+      console.warn('addCoupon error:', e);
+    }
+    return newCoupon;
+  }
+
+  public async updateCoupon(couponId: string, update: Partial<CouponCode>): Promise<void> {
+    const index = this.coupons.findIndex(c => c.id === couponId);
+    if (index !== -1) {
+      this.coupons[index] = { ...this.coupons[index], ...update };
+      if (update.code) {
+        this.coupons[index].code = update.code.trim().toUpperCase();
+      }
+      this.saveToStorage();
+      this.couponListeners.forEach(cb => cb([...this.coupons]));
+    }
+    try {
+      await setDoc(doc(db, 'coupons', couponId), cleanDataForFirestore(update), { merge: true });
+    } catch (e) {
+      console.warn('updateCoupon error:', e);
+    }
+  }
+
+  public async deleteCoupon(couponId: string): Promise<void> {
+    this.coupons = this.coupons.filter(c => c.id !== couponId);
+    this.saveToStorage();
+    this.couponListeners.forEach(cb => cb([...this.coupons]));
+
+    try {
+      await deleteDoc(doc(db, 'coupons', couponId));
+    } catch (e) {
+      console.warn('deleteCoupon error:', e);
+    }
+  }
+
+  public validateCoupon(code: string, bookingAmount: number, service: 'opd' | 'home_visit' | 'lab'): {
+    valid: boolean;
+    discountAmount: number;
+    finalAmount: number;
+    message: string;
+    coupon?: CouponCode;
+  } {
+    const cleanCode = code.trim().toUpperCase();
+    const coupon = this.coupons.find(c => c.code.toUpperCase() === cleanCode);
+    if (!coupon) {
+      return { valid: false, discountAmount: 0, finalAmount: bookingAmount, message: 'Invalid promo code' };
+    }
+    if (!coupon.isActive) {
+      return { valid: false, discountAmount: 0, finalAmount: bookingAmount, message: 'This promo code is currently disabled' };
+    }
+    if (coupon.expiryDate && new Date(coupon.expiryDate).getTime() < Date.now()) {
+      return { valid: false, discountAmount: 0, finalAmount: bookingAmount, message: 'This promo code has expired' };
+    }
+    if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
+      return { valid: false, discountAmount: 0, finalAmount: bookingAmount, message: 'Coupon usage limit reached' };
+    }
+    if (bookingAmount < coupon.minBookingValue) {
+      return { valid: false, discountAmount: 0, finalAmount: bookingAmount, message: `Minimum booking value of ₹${coupon.minBookingValue} required` };
+    }
+    if (!coupon.applicableServices.includes('all') && !coupon.applicableServices.includes(service)) {
+      return { valid: false, discountAmount: 0, finalAmount: bookingAmount, message: `This coupon is not applicable on ${service.toUpperCase()} services` };
+    }
+
+    let discount = 0;
+    if (coupon.discountType === 'fixed') {
+      discount = coupon.discountValue;
+    } else {
+      discount = Math.round((bookingAmount * coupon.discountValue) / 100);
+      if (coupon.maxDiscount && discount > coupon.maxDiscount) {
+        discount = coupon.maxDiscount;
+      }
+    }
+    discount = Math.min(discount, bookingAmount);
+    return {
+      valid: true,
+      discountAmount: discount,
+      finalAmount: Math.max(0, bookingAmount - discount),
+      message: `Coupon ${coupon.code} applied! ₹${discount} saved.`,
+      coupon
+    };
+  }
+
+  // User & Patient Management (Block / Unblock)
+  public async toggleUserBlockStatus(userId: string, reason?: string): Promise<void> {
+    const targetUser = this.users.find(u => u.id === userId);
+    if (!targetUser) return;
+
+    const newStatus: PlatformUser['status'] = targetUser.status === 'blocked' ? 'active' : 'blocked';
+    targetUser.status = newStatus;
+    if (newStatus === 'blocked') {
+      targetUser.blockedReason = reason || 'Blocked by Super Admin';
+    } else {
+      delete targetUser.blockedReason;
+    }
+
+    this.saveToStorage();
+    this.userListeners.forEach(cb => cb([...this.users]));
+
+    try {
+      await setDoc(doc(db, 'platform_users', userId), cleanDataForFirestore(targetUser), { merge: true });
+    } catch (e) {
+      console.warn('toggleUserBlockStatus error:', e);
+    }
+  }
+
+  public async registerOrUpdateUser(phone: string, name: string, role: PlatformUser['role'] = 'patient'): Promise<PlatformUser> {
+    const cleanPhone = userAuth.normalizePhone(phone);
+    let existing = this.users.find(u => u.phone === cleanPhone);
+
+    if (existing) {
+      existing.name = name || existing.name;
+      existing.lastActive = Date.now();
+      existing.totalBookings = (existing.totalBookings || 0) + 1;
+    } else {
+      existing = {
+        id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        phone: cleanPhone,
+        name: name || 'Patient User',
+        role,
+        status: 'active',
+        totalBookings: 1,
+        lastActive: Date.now(),
+        createdAt: Date.now()
+      };
+      this.users.unshift(existing);
+    }
+
+    this.saveToStorage();
+    this.userListeners.forEach(cb => cb([...this.users]));
+
+    try {
+      await setDoc(doc(db, 'platform_users', existing.id), cleanDataForFirestore(existing), { merge: true });
+    } catch (e) {
+      console.warn('registerOrUpdateUser error:', e);
+    }
+    return existing;
   }
 }
 

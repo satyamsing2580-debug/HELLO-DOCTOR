@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { nativeBridge } from '../services/nativeBridge';
 
 export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -20,22 +21,12 @@ export function usePWAInstall() {
   });
   const [isInstalled, setIsInstalled] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
-    const isStandaloneMedia = window.matchMedia('(display-mode: standalone)').matches;
-    const isIOSStandalone = (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-    const isAndroidApp = document.referrer.includes('android-app://');
-    return isStandaloneMedia || isIOSStandalone || isAndroidApp;
+    return nativeBridge.isNativeWrapper();
   });
   const [isIOS, setIsIOS] = useState<boolean>(false);
 
   useEffect(() => {
-    const checkIsStandalone = () => {
-      const isStandaloneMedia = window.matchMedia('(display-mode: standalone)').matches;
-      const isIOSStandalone = (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-      const isAndroidApp = document.referrer.includes('android-app://');
-      return isStandaloneMedia || isIOSStandalone || isAndroidApp;
-    };
-
-    setIsInstalled(checkIsStandalone());
+    setIsInstalled(nativeBridge.isNativeWrapper());
 
     const ua = window.navigator.userAgent.toLowerCase();
     const isIOSDevice = /iphone|ipad|ipod/.test(ua) && !(window as unknown as { MSStream?: unknown }).MSStream;
@@ -63,9 +54,17 @@ export function usePWAInstall() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
+    const handlePromptReady = () => {
+      if (typeof window !== 'undefined' && window.deferredPwaPrompt) {
+        setDeferredPrompt(window.deferredPwaPrompt);
+      }
+    };
+    window.addEventListener('pwa-prompt-ready', handlePromptReady);
+
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      window.removeEventListener('pwa-prompt-ready', handlePromptReady);
     };
   }, []);
 

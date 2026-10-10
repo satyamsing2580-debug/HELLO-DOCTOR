@@ -23,6 +23,7 @@ export const DoctorEditModal: React.FC<Props> = ({ doctorToEdit, onClose, onSave
   const [emoji, setEmoji] = useState(doctorToEdit?.emoji || '👨‍⚕️');
   const [status, setStatus] = useState<Doctor['status']>(doctorToEdit?.status || 'Available');
   const [bio, setBio] = useState(doctorToEdit?.bio || '');
+  const [compounderPassword, setCompounderPassword] = useState(doctorToEdit?.compounderPassword || '1234');
 
   const specialtiesList = [
     'General Physician & Diabetologist',
@@ -57,7 +58,8 @@ export const DoctorEditModal: React.FC<Props> = ({ doctorToEdit, onClose, onSave
       timing: timing.trim(),
       emoji: emoji.trim() || '👨‍⚕️',
       status,
-      bio: bio.trim()
+      bio: bio.trim(),
+      compounderPassword: compounderPassword.trim() || '1234'
     });
   };
 
@@ -282,6 +284,22 @@ export const DoctorEditModal: React.FC<Props> = ({ doctorToEdit, onClose, onSave
               <option value="On Break">On Break</option>
               <option value="Completed">OPD Completed for Today</option>
             </select>
+          </div>
+
+          <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-1.5">
+            <label className="block font-bold text-amber-900 text-xs">
+              🔑 Compounder / Receptionist Login Password *
+            </label>
+            <p className="text-[11px] text-amber-800">
+              Set dedicated security password for this doctor&apos;s compounder to manage live token advancement.
+            </p>
+            <input
+              type="text"
+              placeholder="e.g. 1234, doc402, opd@1"
+              value={compounderPassword}
+              onChange={(e) => setCompounderPassword(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+            />
           </div>
 
           <div className="pt-2">

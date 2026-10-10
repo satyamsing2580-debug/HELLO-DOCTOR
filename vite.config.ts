@@ -22,16 +22,22 @@ export default defineConfig(() => {
         ],
         manifest: {
           id: '/',
-          name: 'Hello Doctor - OPD & Healthcare',
-          short_name: 'Hello Doctor',
-          description: 'Live OPD token tracking, doctor appointment booking, and diagnostic lab tests.',
+          name: 'HELLO DOCTOR',
+          short_name: 'HelloDoctor',
+          description: 'Live OPD token tracking, online doctor consultation, and diagnostic lab tests.',
           theme_color: '#0284c7',
           background_color: '#ffffff',
           display: 'standalone',
-          orientation: 'portrait-primary',
+          orientation: 'portrait',
           start_url: '/',
           scope: '/',
           icons: [
+            {
+              src: '/icon.svg',
+              sizes: 'any',
+              type: 'image/svg+xml',
+              purpose: 'any',
+            },
             {
               src: '/pwa-192x192.png',
               sizes: '192x192',
@@ -86,8 +92,7 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: true,
-          type: 'module',
+          enabled: false,
         },
       }),
     ],

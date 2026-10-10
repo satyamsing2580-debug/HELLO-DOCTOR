@@ -50,5 +50,20 @@ service cloud.firestore {
       allow create: if true;
       allow update, delete: if true;
     }
+
+    match /promo_banners/{bannerId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /platform_users/{userId} {
+      allow read: if true;
+      allow write: if true;
+    }
   }
 }

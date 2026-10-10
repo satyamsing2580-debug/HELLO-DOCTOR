@@ -17,6 +17,56 @@ export interface Doctor {
   totalTokensToday: number;
   status: 'Available' | 'In OPD' | 'On Break' | 'Completed';
   bio?: string;
+  compounderPassword?: string; // Dedicated password for this doctor's compounder login
+}
+
+export interface PromoBanner {
+  id: string;
+  title: string;
+  subtitle?: string;
+  badge?: string;
+  imageUrl?: string;
+  gradientFrom?: string;
+  gradientTo?: string;
+  linkTab?: 'home' | 'bookings' | 'labtests';
+  linkTarget?: string;
+  buttonText?: string;
+  type: 'banner' | 'ticker';
+  isActive: boolean;
+  priority: number;
+  startDate?: string;
+  endDate?: string;
+  createdAt: number;
+}
+
+export interface CouponCode {
+  id: string;
+  code: string; // e.g. FLAT50, FREEOPD
+  description: string;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number; // e.g. 50 (₹50 off) or 20 (20% off)
+  minBookingValue: number; // e.g. 299
+  maxDiscount?: number; // for percentage discounts
+  usageLimit?: number;
+  usedCount: number;
+  expiryDate?: string;
+  isActive: boolean;
+  applicableServices: ('all' | 'opd' | 'home_visit' | 'lab')[];
+  createdAt: number;
+}
+
+export interface PlatformUser {
+  id: string;
+  phone: string;
+  name: string;
+  role: 'patient' | 'compounder' | 'admin';
+  status: 'active' | 'blocked';
+  blockedReason?: string;
+  totalBookings: number;
+  lastActive: number;
+  createdAt: number;
+  assignedDoctorId?: string; // If compounder
+  assignedDoctorName?: string;
 }
 
 export interface GeoLocationData {

@@ -16,6 +16,20 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Hello Doctor</title>
     <meta name="description" content="Mobile-first healthcare application with live OPD token tracking, appointment booking, lab tests, receptionist queue management, and admin financial dashboard." />
+    <script>
+      // Globally capture beforeinstallprompt as early as possible
+      window.deferredPwaPrompt = null;
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window.deferredPwaPrompt = e;
+        window.dispatchEvent(new CustomEvent('pwa-prompt-ready', { detail: e }));
+        console.log('[PWA] Global beforeinstallprompt captured!');
+      });
+      window.addEventListener('appinstalled', function () {
+        window.deferredPwaPrompt = null;
+        console.log('[PWA] Hello Doctor app installed successfully.');
+      });
+    </script>
     <meta property="og:title" content="Hello Doctor" />
     <meta property="og:description" content="Mobile-first healthcare application with live OPD token tracking, appointment booking, lab tests, receptionist queue management, and admin financial dashboard." />
     <meta property="og:type" content="website" />

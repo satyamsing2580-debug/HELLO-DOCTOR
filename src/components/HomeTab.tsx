@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Stethoscope, Star, MapPin, Clock, ArrowRight, ShieldCheck, Zap, Sparkles, Activity, Home as HomeIcon, FlaskConical, ChevronRight } from 'lucide-react';
-import { Doctor, AppSettings } from '../types';
+import { Doctor, AppSettings, PromoBanner } from '../types';
 import { BookingModal } from './BookingModal';
 import { HomeVisitModal } from './HomeVisitModal';
 import { DoctorAvatar } from './DoctorAvatar';
+import { realtimeDb } from '../services/realtimeDb';
 
 interface Props {
   doctors: Doctor[];
@@ -18,10 +19,17 @@ export const HomeTab: React.FC<Props> = ({
   onNavigateToTab,
   onBookingCreated
 }) => {
+  const [banners, setBanners] = useState<PromoBanner[]>(() => realtimeDb.getPromoBanners());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('All');
   const [selectedDoctorForBooking, setSelectedDoctorForBooking] = useState<Doctor | null>(null);
   const [isHomeVisitModalOpen, setIsHomeVisitModalOpen] = useState(false);
+
+  useEffect(() => {
+    return realtimeDb.subscribePromoBanners((list) => {
+      setBanners(list);
+    });
+  }, []);
 
   const specialties = [
     'All',
@@ -52,8 +60,24 @@ export const HomeTab: React.FC<Props> = ({
     return matchesSearch && matchesSpecialty;
   });
 
+  const activeTickers = banners.filter(b => b.isActive && b.type === 'ticker');
+  const activePromoBanners = banners.filter(b => b.isActive && b.type === 'banner');
+
   return (
-    <div className="pb-28 pt-2 px-4 max-w-md mx-auto space-y-4">
+    <div className="pb-28 pt-2 px-4 max-w-md mx-auto space-y-3.5">
+      {/* Live Announcement Ticker */}
+      {activeTickers.map((ticker) => (
+        <div
+          key={ticker.id}
+          className="p-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-900 text-xs font-bold rounded-2xl shadow-xs flex items-center space-x-2 animate-in fade-in duration-200"
+        >
+          <span className="px-1.5 py-0.5 bg-white/30 rounded text-[9px] uppercase font-black shrink-0">
+            {ticker.badge || 'NOTICE'}
+          </span>
+          <span className="truncate flex-1 text-[11px]">{ticker.title}</span>
+        </div>
+      ))}
+
       {/* Search Bar */}
       <div className="relative">
         <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
@@ -138,6 +162,44 @@ export const HomeTab: React.FC<Props> = ({
           </button>
         </div>
       </div>
+
+      {/* Dynamic Promotional Banners (CMS controlled by Super Admin) */}
+      {activePromoBanners.map((banner) => (
+        <div
+          key={banner.id}
+          className={`p-4 rounded-3xl bg-gradient-to-r ${banner.gradientFrom || 'from-sky-600'} ${banner.gradientTo || 'to-blue-700'} text-white shadow-md relative overflow-hidden group`}
+        >
+          <div className="relative z-10 space-y-1.5">
+            {banner.badge && (
+              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-white/20 border border-white/30 inline-block">
+                {banner.badge}
+              </span>
+            )}
+            <h4 className="font-extrabold text-sm leading-snug">{banner.title}</h4>
+            {banner.subtitle && (
+              <p className="text-[11px] text-white/85 leading-relaxed">{banner.subtitle}</p>
+            )}
+            {banner.buttonText && (
+              <div className="pt-1.5">
+                <button
+                  onClick={() => {
+                    if (banner.linkTab === 'labtests') onNavigateToTab('labtests');
+                    else if (banner.linkTab === 'bookings') onNavigateToTab('bookings');
+                    else {
+                      const el = document.getElementById('doctors-list');
+                      el?.scrollIntoView({ behavior: 'smooth' });
+                    }
+                  }}
+                  className="inline-flex items-center text-xs font-bold bg-white text-slate-900 px-3.5 py-1.5 rounded-xl shadow-xs hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  <span>{banner.buttonText}</span>
+                  <ChevronRight className="w-3 h-3 ml-1" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
 
       {/* Feature Banner: Live Token Queue Alert */}
       <div className="bg-gradient-to-br from-slate-900 via-sky-950 to-slate-900 rounded-2xl p-4 text-white shadow-md relative overflow-hidden">

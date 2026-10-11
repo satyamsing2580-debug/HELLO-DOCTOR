@@ -18,9 +18,27 @@ import { nativeBridge } from './services/nativeBridge';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
-  const [currentRole, setCurrentRole] = useState<UserRole>('patient');
-  const [compounderDoctorName, setCompounderDoctorName] = useState<string>('');
+  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
+    try {
+      const savedRole = localStorage.getItem('hd_staff_role') || sessionStorage.getItem('hd_staff_role');
+      if (savedRole === 'compounder' || savedRole === 'admin') {
+        return savedRole as UserRole;
+      }
+    } catch {}
+    return 'patient';
+  });
+  const [compounderDoctorName, setCompounderDoctorName] = useState<string>(() => {
+    try {
+      const savedCompounder = localStorage.getItem('hd_compounder_session') || sessionStorage.getItem('hd_compounder_session');
+      if (savedCompounder) {
+        const parsed = JSON.parse(savedCompounder);
+        return parsed.doctorName || '';
+      }
+    } catch {}
+    return '';
+  });
   const [isStaffLoginOpen, setIsStaffLoginOpen] = useState(false);
+  const [staffLoginInitialRole, setStaffLoginInitialRole] = useState<'admin' | 'compounder'>('compounder');
   const [userPhoneState, setUserPhoneState] = useState<string>(() => userAuth.getUserPhone());
 
   // Android Hardware Back button & Gesture navigation for Median / Web2App wrapper
@@ -109,6 +127,11 @@ export default function App() {
     realtimeDb.acknowledgeAlarm();
   };
 
+  const handleOpenStaffLogin = (role: 'admin' | 'compounder' = 'compounder') => {
+    setStaffLoginInitialRole(role);
+    setIsStaffLoginOpen(true);
+  };
+
   const handleLoginSuccess = (role: UserRole, doctorName?: string) => {
     setCurrentRole(role);
     if (doctorName) {
@@ -119,6 +142,12 @@ export default function App() {
 
   const handleLogoutStaff = () => {
     sirenManager.stopSiren();
+    try {
+      localStorage.removeItem('hd_compounder_session');
+      localStorage.removeItem('hd_staff_role');
+      sessionStorage.removeItem('hd_compounder_session');
+      sessionStorage.removeItem('hd_staff_role');
+    } catch {}
     setCurrentRole('patient');
     setCompounderDoctorName('');
     setActiveTab('home');
@@ -137,7 +166,7 @@ export default function App() {
         {/* Mobile Header with App-like styling & Live Alert Bar */}
         <MobileAppHeader
           currentRole={currentRole}
-          onOpenStaffLogin={() => setIsStaffLoginOpen(true)}
+          onOpenStaffLogin={() => handleOpenStaffLogin('compounder')}
           onLogoutStaff={handleLogoutStaff}
           compounderDoctorName={compounderDoctorName}
           hasActiveAlarm={currentRole === 'admin' && hasActiveAlarm}
@@ -208,7 +237,7 @@ export default function App() {
               {activeTab === 'settings' && (
                 <SettingsTab
                   appSettings={appSettings}
-                  onOpenStaffLogin={() => setIsStaffLoginOpen(true)}
+                  onOpenStaffLogin={handleOpenStaffLogin}
                 />
               )}
             </>
@@ -233,6 +262,7 @@ export default function App() {
             doctors={doctors}
             onClose={() => setIsStaffLoginOpen(false)}
             onLoginSuccess={handleLoginSuccess}
+            initialRole={staffLoginInitialRole}
           />
         )}
       </div>

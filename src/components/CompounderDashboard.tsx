@@ -9,6 +9,7 @@ import {
 interface Props {
   doctors: Doctor[];
   appointments: Appointment[];
+  initialDoctorName?: string;
   onExit: () => void;
   onDoctorSelected: (doctorName: string) => void;
 }
@@ -16,12 +17,29 @@ interface Props {
 export const CompounderDashboard: React.FC<Props> = ({
   doctors,
   appointments,
+  initialDoctorName,
   onExit,
   onDoctorSelected
 }) => {
-  const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(() => {
+    if (initialDoctorName && doctors.length > 0) {
+      const found = doctors.find(d => d.name.toLowerCase() === initialDoctorName.toLowerCase());
+      if (found) return found.id;
+    }
+    return null;
+  });
   const [searchInput, setSearchInput] = useState('');
   const [validationError, setValidationError] = useState('');
+
+  // Auto-select doctor if initialDoctorName becomes available after async doctors load
+  React.useEffect(() => {
+    if (!selectedDoctorId && initialDoctorName && doctors.length > 0) {
+      const found = doctors.find(d => d.name.toLowerCase() === initialDoctorName.toLowerCase());
+      if (found) {
+        setSelectedDoctorId(found.id);
+      }
+    }
+  }, [initialDoctorName, doctors, selectedDoctorId]);
 
   const assignedDoctor = doctors.find(d => d.id === selectedDoctorId);
 

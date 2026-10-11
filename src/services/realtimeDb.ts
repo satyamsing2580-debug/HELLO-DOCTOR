@@ -2281,6 +2281,20 @@ class HelloDoctorRealtimeDB {
     }
   }
 
+  public isUserBlocked(phoneOrId: string): boolean {
+    if (!phoneOrId) return false;
+    const cleanPhone = userAuth.normalizePhone(phoneOrId);
+    const user = this.users.find(u => u.phone === cleanPhone || u.id === phoneOrId);
+    return user?.status === 'blocked';
+  }
+
+  public getUserBlockReason(phoneOrId: string): string | undefined {
+    if (!phoneOrId) return undefined;
+    const cleanPhone = userAuth.normalizePhone(phoneOrId);
+    const user = this.users.find(u => u.phone === cleanPhone || u.id === phoneOrId);
+    return user?.blockedReason;
+  }
+
   public async registerOrUpdateUser(phone: string, name: string, role: PlatformUser['role'] = 'patient'): Promise<PlatformUser> {
     const cleanPhone = userAuth.normalizePhone(phone);
     let existing = this.users.find(u => u.phone === cleanPhone);

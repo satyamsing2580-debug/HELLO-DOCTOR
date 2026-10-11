@@ -8,7 +8,7 @@ import { PostVisitFeedbackModal } from './PostVisitFeedbackModal';
 
 interface Props {
   appSettings?: AppSettings;
-  onOpenStaffLogin: () => void;
+  onOpenStaffLogin: (initialRole?: 'admin' | 'compounder') => void;
 }
 
 export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) => {
@@ -295,21 +295,38 @@ export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) 
       </div>
 
       {/* Staff & Admin Portal Access */}
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 text-white shadow-xs space-y-3">
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 rounded-2xl p-4 text-white shadow-xs space-y-3.5 border border-slate-700/60">
         <div className="flex items-center space-x-2 text-sky-400 text-xs font-bold">
           <ShieldCheck className="w-4 h-4" />
-          <span>Hospital Administration & Reception Portal</span>
+          <span>Hospital Administration & Counter Portal</span>
         </div>
         <p className="text-xs text-slate-300 leading-relaxed">
-          Authorized hospital staff, Group Admin, and Compounder login for live OPD token queue advancement and management.
+          Authorized hospital staff portal for live OPD token advancement, doctor selection, and administrative hospital controls.
         </p>
-        <button
-          onClick={onOpenStaffLogin}
-          className="w-full py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center space-x-2 cursor-pointer"
-        >
-          <span>Staff Login (Admin / Compounder)</span>
-          <ChevronRight className="w-4 h-4" />
-        </button>
+
+        <div className="grid grid-cols-1 gap-2 pt-1">
+          <button
+            onClick={() => onOpenStaffLogin('compounder')}
+            className="w-full py-2.5 px-3.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-between cursor-pointer"
+          >
+            <div className="flex items-center space-x-2">
+              <ShieldCheck className="w-4 h-4 text-teal-200" />
+              <span>Doctor Compounder Admin (90073555062)</span>
+            </div>
+            <ChevronRight className="w-4 h-4 text-teal-200" />
+          </button>
+
+          <button
+            onClick={() => onOpenStaffLogin('admin')}
+            className="w-full py-2.5 px-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl border border-slate-700 transition-colors flex items-center justify-between cursor-pointer"
+          >
+            <div className="flex items-center space-x-2">
+              <Shield className="w-4 h-4 text-sky-400" />
+              <span>Super Admin Dashboard Login</span>
+            </div>
+            <ChevronRight className="w-4 h-4 text-slate-400" />
+          </button>
+        </div>
       </div>
 
       {/* Privacy Policy Modal */}

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { 
   X, ShieldCheck, Building2, Banknote, CheckCircle2, 
-  ArrowRight, Loader2, Sparkles, AlertCircle, Clock, MapPin, Receipt
+  ArrowRight, Loader2, Sparkles, AlertCircle, Clock, MapPin, Receipt, Tag, Check
 } from 'lucide-react';
 import { PaymentDetails } from '../types';
 import { paymentGateway, CounterPaymentType, COUNTER_PAYMENT_CONFIGS } from '../services/paymentGateway';
+import { realtimeDb } from '../services/realtimeDb';
 
 interface Props {
   amount: number;
@@ -34,14 +35,34 @@ export const PaymentCheckoutModal: React.FC<Props> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState<'counter'>('counter');
 
+  // Coupon Engine States
+  const [couponInput, setCouponInput] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponMessage, setCouponMessage] = useState<{ text: string; success: boolean } | null>(null);
+
+  const finalPayable = Math.max(0, amount - couponDiscount);
+
+  const handleApplyCoupon = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponInput.trim()) return;
+
+    const res = realtimeDb.validateCoupon(couponInput.trim(), amount, 'opd');
+    if (res.valid) {
+      setCouponDiscount(res.discountAmount);
+      setCouponMessage({ text: res.message, success: true });
+    } else {
+      setCouponDiscount(0);
+      setCouponMessage({ text: res.message, success: false });
+    }
+  };
+
   const config = COUNTER_PAYMENT_CONFIGS[counterPaymentType] || COUNTER_PAYMENT_CONFIGS.AT_COUNTER;
   const displayLabel = counterPaymentLabel || config.label;
 
   const handleConfirmPayAtCounter = async () => {
     setIsProcessing(true);
-    // Brief deliberate transition for visual feedback
     await new Promise((r) => setTimeout(r, 450));
-    const record = paymentGateway.createCounterPaymentRecord(amount, counterPaymentType);
+    const record = paymentGateway.createCounterPaymentRecord(finalPayable, counterPaymentType);
     onPaymentSuccess(record);
   };
 

@@ -59,6 +59,12 @@ export const HomeVisitModal: React.FC<HomeVisitModalProps> = ({
       return;
     }
 
+    if (realtimeDb.isUserBlocked(patientPhone)) {
+      const reason = realtimeDb.getUserBlockReason(patientPhone) || 'Security policy restriction';
+      setErrorMessage(`Access Restricted: This phone number (${patientPhone}) is blocked by Hospital Admin (${reason}). Contact reception.`);
+      return;
+    }
+
     // MANDATORY REAL-TIME GPS VERIFICATION: Play Store & Indus Appstore Compliance
     if (!verifiedLocation || !verifiedLocation.isVerified) {
       setErrorMessage('GPS Location Verification is mandatory. Please tap "Detect Current GPS Location" above to verify your real-time physical address before requesting a doctor visit.');

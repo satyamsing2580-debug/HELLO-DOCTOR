@@ -9,8 +9,12 @@ import {
   PlusCircle, Edit3, Trash2, BellRing, VolumeX, ShieldAlert,
   ArrowUpRight, Stethoscope, Search, RefreshCw, Home,
   DollarSign, Sliders, Eye, Save, Phone, MapPin, Check,
-  FlaskConical, ClipboardList, Sparkles, Tag, CheckCircle, Star, MessageSquare
+  FlaskConical, ClipboardList, Sparkles, Tag, CheckCircle, Star, MessageSquare, KeyRound
 } from 'lucide-react';
+import { AdminUserManagement } from './admin/AdminUserManagement';
+import { AdminBannersCMS } from './admin/AdminBannersCMS';
+import { AdminCouponsCMS } from './admin/AdminCouponsCMS';
+import { DoctorPasswordModal } from './admin/DoctorPasswordModal';
 
 interface Props {
   doctors: Doctor[];
@@ -35,9 +39,10 @@ export const GroupAdminDashboard: React.FC<Props> = ({
   onAcknowledgeAlarm,
   onExit
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'verification' | 'home_visits' | 'lab_orders' | 'lab_tests' | 'feedbacks' | 'pricing' | 'doctors' | 'financial'>('verification');
+  const [activeSubTab, setActiveSubTab] = useState<'verification' | 'home_visits' | 'lab_orders' | 'lab_tests' | 'users' | 'banners' | 'coupons' | 'feedbacks' | 'pricing' | 'doctors' | 'financial'>('verification');
   const [appointmentFilter, setAppointmentFilter] = useState<'pending' | 'all' | 'confirmed' | 'cancelled'>('pending');
   const [doctorToEdit, setDoctorToEdit] = useState<Doctor | null>(null);
+  const [doctorForPasswordModal, setDoctorForPasswordModal] = useState<Doctor | null>(null);
   const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
   const [searchDoctor, setSearchDoctor] = useState('');
   
@@ -395,6 +400,42 @@ export const GroupAdminDashboard: React.FC<Props> = ({
           <span className="bg-cyan-900 text-white text-[10px] px-1.5 py-0.2 rounded-full font-black ml-1">
             {labTests.length}
           </span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('users')}
+          className={`px-3 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center space-x-1.5 ${
+            activeSubTab === 'users'
+              ? 'bg-sky-600 text-white shadow-xs'
+              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>Users & Patients</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('banners')}
+          className={`px-3 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center space-x-1.5 ${
+            activeSubTab === 'banners'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>Banners CMS</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('coupons')}
+          className={`px-3 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center space-x-1.5 ${
+            activeSubTab === 'coupons'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Tag className="w-3.5 h-3.5" />
+          <span>Coupons</span>
         </button>
 
         <button
@@ -1619,11 +1660,32 @@ export const GroupAdminDashboard: React.FC<Props> = ({
                   <div className="min-w-0">
                     <h4 className="font-extrabold text-xs text-slate-900 truncate">{doc.name}</h4>
                     <p className="text-[11px] text-sky-700 font-semibold truncate">{doc.specialty}</p>
-                    <p className="text-[10px] text-slate-400">Room {doc.roomNumber} • Fee: ₹{doc.consultationFee}</p>
+                    <p className="text-[10px] text-slate-400">
+                      Room {doc.roomNumber} • Fee: ₹{doc.consultationFee} • Live Token: #{doc.currentToken}
+                    </p>
+                    <div className="mt-1 flex items-center space-x-1.5">
+                      <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 font-mono font-bold px-2 py-0.5 rounded-md flex items-center space-x-1">
+                        <KeyRound className="w-3 h-3 text-amber-600" />
+                        <span>Compounder Pass: {doc.compounderPassword || '1234'}</span>
+                      </span>
+                      <button
+                        onClick={() => setDoctorForPasswordModal(doc)}
+                        className="text-[10px] text-amber-700 hover:text-amber-900 font-bold underline cursor-pointer"
+                      >
+                        Change Pass
+                      </button>
+                    </div>
                   </div>
                 </div>
 
                 <div className="flex items-center space-x-1 shrink-0">
+                  <button
+                    onClick={() => setDoctorForPasswordModal(doc)}
+                    className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                    title="Change Compounder Password"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => {
                       setDoctorToEdit(doc);
@@ -1646,6 +1708,25 @@ export const GroupAdminDashboard: React.FC<Props> = ({
             ))}
           </div>
         </div>
+      )}
+
+      {/* SUBTAB: USERS & PATIENTS MANAGEMENT */}
+      {activeSubTab === 'users' && (
+        <AdminUserManagement
+          appointments={appointments}
+          labBookings={labBookings}
+          homeVisits={homeVisits}
+        />
+      )}
+
+      {/* SUBTAB: PROMOTIONAL BANNERS & TICKERS CMS */}
+      {activeSubTab === 'banners' && (
+        <AdminBannersCMS />
+      )}
+
+      {/* SUBTAB: DYNAMIC COUPONS & DISCOUNT ENGINE */}
+      {activeSubTab === 'coupons' && (
+        <AdminCouponsCMS />
       )}
 
       {/* SUBTAB 6: FINANCIAL ANALYTICS */}
@@ -1735,6 +1816,17 @@ export const GroupAdminDashboard: React.FC<Props> = ({
             setTestToEdit(null);
           }}
           onSave={handleSaveLabTest}
+        />
+      )}
+
+      {/* Doctor Dedicated Compounder Password Manager Modal */}
+      {doctorForPasswordModal && (
+        <DoctorPasswordModal
+          doctor={doctorForPasswordModal}
+          onClose={() => setDoctorForPasswordModal(null)}
+          onSavePassword={async (docId, pass) => {
+            await realtimeDb.updateDoctorPassword(docId, pass);
+          }}
         />
       )}
 

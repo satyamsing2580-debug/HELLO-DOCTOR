@@ -53,6 +53,13 @@ export const BookingModal: React.FC<Props> = ({ doctor, onClose, onSuccess }) =>
       return;
     }
 
+    const cleanUserPhone = userAuth.normalizePhone(patientPhone);
+    const blockedCheck = realtimeDb.getUsers().find(u => u.phone === cleanUserPhone && u.status === 'blocked');
+    if (blockedCheck) {
+      setErrorMsg(`Access Restricted: This phone number (${patientPhone}) has been blocked by Clinic Administration (${blockedCheck.blockedReason || 'Policy violation'}). Contact support.`);
+      return;
+    }
+
     // Strict location & address validation for Indus Appstore & Play Store compliance
     if (!patientAddress.trim()) {
       setErrorMsg('Please provide patient address and verify your GPS location.');
@@ -100,6 +107,9 @@ export const BookingModal: React.FC<Props> = ({ doctor, onClose, onSuccess }) =>
             },
         payment: paymentDetails
       });
+
+      // Auto-register/sync patient in Super Admin User Registry
+      await realtimeDb.registerOrUpdateUser(patientPhone, patientName, 'patient');
 
       // Present the official Booking Receipt modal with Token Number & Pay-at-Clinic instructions
       setConfirmedAppointment(apt);

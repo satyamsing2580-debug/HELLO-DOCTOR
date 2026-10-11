@@ -311,7 +311,7 @@ export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) 
           >
             <div className="flex items-center space-x-2">
               <ShieldCheck className="w-4 h-4 text-teal-200" />
-              <span>Doctor Compounder Admin (90073555062)</span>
+              <span>Doctor Compounder Login</span>
             </div>
             <ChevronRight className="w-4 h-4 text-teal-200" />
           </button>

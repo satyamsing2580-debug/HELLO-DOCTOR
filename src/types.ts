@@ -141,6 +141,8 @@ export interface LabBooking {
   bookingType: 'Home Sample Collection' | 'Visit Lab';
   patientName: string;
   patientPhone: string;
+  patientAge?: number | string;
+  patientGender?: 'Male' | 'Female' | 'Other';
   address?: string;
   date: string;
   timeSlot: string;
@@ -148,6 +150,10 @@ export interface LabBooking {
   bookedAt: number;
   location?: GeoLocationData;
   payment?: PaymentDetails;
+  reportUrl?: string;
+  reportFileName?: string;
+  reportNotes?: string;
+  reportUploadedAt?: number;
 }
 
 export interface FamilyDependant {
@@ -159,7 +165,7 @@ export interface FamilyDependant {
   createdAt?: number;
 }
 
-export type UserRole = 'patient' | 'admin' | 'compounder';
+export type UserRole = 'patient' | 'admin' | 'compounder' | 'lab';
 
 export interface CompounderSession {
   doctorId: string;

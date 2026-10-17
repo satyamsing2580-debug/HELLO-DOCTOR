@@ -21,6 +21,8 @@ export const LabTestsTab: React.FC<Props> = ({ labTests, onBookingSuccess }) => 
   const [bookingType, setBookingType] = useState<'Home Sample Collection' | 'Visit Lab'>('Home Sample Collection');
   const [patientName, setPatientName] = useState(() => userAuth.getUserName());
   const [patientPhone, setPatientPhone] = useState(() => userAuth.getUserPhone());
+  const [patientAge, setPatientAge] = useState('28');
+  const [patientGender, setPatientGender] = useState<'Male' | 'Female' | 'Other'>('Male');
   const [address, setAddress] = useState('');
   const [verifiedLocation, setVerifiedLocation] = useState<GeoLocationData | null>(null);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -108,6 +110,8 @@ export const LabTestsTab: React.FC<Props> = ({ labTests, onBookingSuccess }) => 
         bookingType,
         patientName,
         patientPhone,
+        patientAge: parseInt(patientAge) || 28,
+        patientGender,
         address: bookingType === 'Home Sample Collection' ? address : undefined,
         date,
         timeSlot,
@@ -393,6 +397,38 @@ export const LabTestsTab: React.FC<Props> = ({ labTests, onBookingSuccess }) => 
                   onChange={(e) => setPatientPhone(e.target.value.replace(/\D/g, ''))}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
                 />
+              </div>
+
+              {/* Patient Age & Gender for Diagnostic Accuracy */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Age (Years) *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="120"
+                    required
+                    value={patientAge}
+                    onChange={(e) => setPatientAge(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Gender *
+                  </label>
+                  <select
+                    value={patientGender}
+                    onChange={(e) => setPatientGender(e.target.value as 'Male' | 'Female' | 'Other')}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 cursor-pointer"
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
               </div>
 
               {/* Address with real-time GPS Verification for Home Sample Collection */}

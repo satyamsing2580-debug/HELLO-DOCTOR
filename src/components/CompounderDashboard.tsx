@@ -3,8 +3,10 @@ import { Doctor, Appointment } from '../types';
 import { realtimeDb } from '../services/realtimeDb';
 import { 
   UserCheck, Stethoscope, ChevronRight, AlertCircle, Phone, 
-  Clock, CheckCircle, SkipForward, Play, RefreshCw, LogOut, Search
+  Clock, CheckCircle, SkipForward, Play, RefreshCw, LogOut, Search,
+  Printer
 } from 'lucide-react';
+import { BookingReceiptModal } from './BookingReceiptModal';
 
 interface Props {
   doctors: Doctor[];
@@ -21,6 +23,7 @@ export const CompounderDashboard: React.FC<Props> = ({
   onExit,
   onDoctorSelected
 }) => {
+  const [selectedAppointmentForPrint, setSelectedAppointmentForPrint] = useState<Appointment | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(() => {
     if (initialDoctorName && doctors.length > 0) {
       const found = doctors.find(d => d.name.toLowerCase() === initialDoctorName.toLowerCase());
@@ -67,6 +70,8 @@ export const CompounderDashboard: React.FC<Props> = ({
     }
   };
 
+  const [showCompletedList, setShowCompletedList] = useState(false);
+
   // Live Token controls
   const handleCallNext = () => {
     if (!assignedDoctor) return;
@@ -85,11 +90,24 @@ export const CompounderDashboard: React.FC<Props> = ({
     }
   };
 
+  // Complete an individual patient's consultation directly
+  const handleCompletePatient = async (aptId: string) => {
+    await realtimeDb.markAppointmentCompleted(aptId);
+  };
+
   // Patients booked for this specific doctor
   const doctorAppointments = appointments.filter(a => a.doctorId === selectedDoctorId);
-  const confirmedQueue = doctorAppointments
-    .filter(a => a.status === 'Confirmed' || a.status === 'Completed')
+
+  // Active / pending tokens queue:
+  // Strictly only confirmed appointments whose token has not passed
+  const activeLiveQueue = doctorAppointments
+    .filter(a => a.status === 'Confirmed' && (!assignedDoctor || a.tokenNumber >= assignedDoctor.currentToken))
     .sort((a, b) => a.tokenNumber - b.tokenNumber);
+
+  // Completed consultations (automatically archived/hidden from the active live queue)
+  const completedPatients = doctorAppointments
+    .filter(a => a.status === 'Completed' || (assignedDoctor && a.tokenNumber < assignedDoctor.currentToken))
+    .sort((a, b) => b.tokenNumber - a.tokenNumber);
 
   return (
     <div className="pb-28 pt-2 px-4 max-w-md mx-auto space-y-4">
@@ -261,50 +279,66 @@ export const CompounderDashboard: React.FC<Props> = ({
             </button>
           </div>
 
-          {/* Doctor-Specific Patients Queue */}
+          {/* Doctor-Specific Patients Queue: Active & Pending Tokens Only */}
           <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="font-extrabold text-sm text-slate-900">
-                Today&apos;s OPD Patient Queue ({confirmedQueue.length})
-              </h4>
-              <span className="text-xs text-slate-400 font-medium">Auto-synced</span>
+              <div>
+                <h4 className="font-extrabold text-sm text-slate-900">
+                  Today&apos;s OPD Patient Queue ({activeLiveQueue.length})
+                </h4>
+                <p className="text-[11px] text-slate-500">Live active &amp; waiting patients</p>
+              </div>
+              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-bold border border-emerald-200">
+                Live Queue
+              </span>
             </div>
 
             <div className="divide-y divide-slate-100">
-              {confirmedQueue.length === 0 ? (
-                <p className="text-xs text-slate-400 py-4 text-center">
-                  No confirmed patients for {assignedDoctor.name} yet.
-                </p>
+              {activeLiveQueue.length === 0 ? (
+                <div className="py-6 text-center space-y-1">
+                  <p className="text-xs font-bold text-slate-600">No pending patients in active queue</p>
+                  <p className="text-[11px] text-slate-400">
+                    All currently confirmed patient consultations have been completed or no new patients are waiting.
+                  </p>
+                </div>
               ) : (
-                confirmedQueue.map((apt) => {
+                activeLiveQueue.map((apt) => {
                   const isCurrent = apt.tokenNumber === assignedDoctor.currentToken;
-                  const isDone = apt.tokenNumber < assignedDoctor.currentToken;
+                  const isNext = apt.tokenNumber === assignedDoctor.currentToken + 1;
 
                   return (
                     <div
                       key={apt.id}
-                      className={`py-3 flex items-center justify-between ${
-                        isCurrent ? 'bg-emerald-50/80 -mx-4 px-4 rounded-xl border border-emerald-200' : ''
+                      className={`py-3 flex items-center justify-between transition-colors ${
+                        isCurrent
+                          ? 'bg-emerald-50/90 -mx-4 px-4 rounded-xl border border-emerald-200 shadow-2xs'
+                          : ''
                       }`}
                     >
                       <div className="flex items-center space-x-3">
-                        <div className={`w-8 h-8 rounded-xl font-black text-xs flex items-center justify-center ${
-                          isCurrent
-                            ? 'bg-emerald-600 text-white animate-pulse'
-                            : isDone
-                            ? 'bg-slate-100 text-slate-400'
-                            : 'bg-sky-100 text-sky-800'
-                        }`}>
+                        <div
+                          className={`w-9 h-9 rounded-xl font-black text-xs flex items-center justify-center shrink-0 ${
+                            isCurrent
+                              ? 'bg-emerald-600 text-white animate-pulse shadow-xs'
+                              : isNext
+                              ? 'bg-sky-600 text-white'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
                           #{apt.tokenNumber}
                         </div>
                         <div>
                           <div className="flex items-center space-x-1.5">
                             <h5 className="font-bold text-xs text-slate-900">{apt.patientName}</h5>
-                            {isCurrent && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-200 text-emerald-800">
-                                Current
+                            {isCurrent ? (
+                              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-800">
+                                Inside OPD
                               </span>
-                            )}
+                            ) : isNext ? (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">
+                                Next Up
+                              </span>
+                            ) : null}
                           </div>
                           <p className="text-[11px] text-slate-500">
                             {apt.patientPhone} • {apt.timeSlot}
@@ -312,15 +346,38 @@ export const CompounderDashboard: React.FC<Props> = ({
                         </div>
                       </div>
 
-                      <div className="text-right">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          isDone
-                            ? 'bg-slate-100 text-slate-500'
-                            : isCurrent
-                            ? 'bg-emerald-100 text-emerald-800 font-bold'
-                            : 'bg-amber-50 text-amber-800'
-                        }`}>
-                          {isDone ? 'Completed' : isCurrent ? 'Inside OPD' : 'Waiting'}
+                      <div className="flex items-center space-x-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAppointmentForPrint(apt)}
+                          title="Print Patient Token Slip"
+                          className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[10px] font-bold flex items-center space-x-1 shadow-2xs transition-colors cursor-pointer"
+                        >
+                          <Printer className="w-3 h-3 text-slate-500" />
+                          <span className="hidden sm:inline">Print Slip</span>
+                        </button>
+
+                        {isCurrent && (
+                          <button
+                            type="button"
+                            onClick={() => handleCompletePatient(apt.id)}
+                            title="Mark Consultation Completed and remove from live queue"
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold flex items-center space-x-1 shadow-xs transition-colors cursor-pointer"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            <span>Done</span>
+                          </button>
+                        )}
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            isCurrent
+                              ? 'bg-emerald-100 text-emerald-800 font-bold'
+                              : isNext
+                              ? 'bg-sky-100 text-sky-800'
+                              : 'bg-amber-50 text-amber-800 border border-amber-200'
+                          }`}
+                        >
+                          {isCurrent ? 'Consulting' : isNext ? 'Ready' : 'Waiting'}
                         </span>
                       </div>
                     </div>
@@ -329,7 +386,67 @@ export const CompounderDashboard: React.FC<Props> = ({
               )}
             </div>
           </div>
+
+          {/* Completed Consultations Today (Archived from active queue) */}
+          {completedPatients.length > 0 && (
+            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 space-y-2">
+              <button
+                type="button"
+                onClick={() => setShowCompletedList(!showCompletedList)}
+                className="w-full flex items-center justify-between text-left text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
+              >
+                <div className="flex items-center space-x-1.5">
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  <span>Completed Consultations Today ({completedPatients.length})</span>
+                </div>
+                <span className="text-[10px] font-semibold text-teal-700 underline">
+                  {showCompletedList ? 'Hide List' : 'View Completed'}
+                </span>
+              </button>
+
+              {showCompletedList && (
+                <div className="divide-y divide-slate-200/60 pt-2 border-t border-slate-200/60 max-h-48 overflow-y-auto space-y-1">
+                  {completedPatients.map((apt) => (
+                    <div key={apt.id} className="py-1.5 flex items-center justify-between text-xs">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-6 h-6 rounded-lg bg-teal-100 text-teal-800 text-[10px] font-bold flex items-center justify-center">
+                          #{apt.tokenNumber}
+                        </span>
+                        <div>
+                          <p className="font-semibold text-slate-800 text-xs">{apt.patientName}</p>
+                          <p className="text-[10px] text-slate-500">{apt.patientPhone}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAppointmentForPrint(apt)}
+                          className="p-1 text-slate-400 hover:text-slate-700 bg-white border border-slate-200 rounded-md cursor-pointer"
+                          title="Print Receipt"
+                        >
+                          <Printer className="w-3 h-3" />
+                        </button>
+                        <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center space-x-1">
+                          <CheckCircle className="w-3 h-3 text-emerald-600" />
+                          <span>Completed</span>
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Direct Token Slip Print Modal */}
+      {selectedAppointmentForPrint && (
+        <BookingReceiptModal
+          appointment={selectedAppointmentForPrint}
+          onClose={() => setSelectedAppointmentForPrint(null)}
+          onViewMyBookings={() => setSelectedAppointmentForPrint(null)}
+        />
       )}
     </div>
   );

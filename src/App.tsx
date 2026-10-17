@@ -10,6 +10,7 @@ import { SettingsTab } from './components/SettingsTab';
 import { StaffLoginModal } from './components/StaffLoginModal';
 import { GroupAdminDashboard } from './components/GroupAdminDashboard';
 import { CompounderDashboard } from './components/CompounderDashboard';
+import { LabAdminDashboard } from './components/LabAdminDashboard';
 import { sirenManager } from './services/audioSiren';
 import { userAuth } from './services/userAuth';
 import { OfflineIndicator } from './components/OfflineIndicator';
@@ -21,7 +22,7 @@ export default function App() {
   const [currentRole, setCurrentRole] = useState<UserRole>(() => {
     try {
       const savedRole = localStorage.getItem('hd_staff_role') || sessionStorage.getItem('hd_staff_role');
-      if (savedRole === 'compounder' || savedRole === 'admin') {
+      if (savedRole === 'compounder' || savedRole === 'admin' || savedRole === 'lab') {
         return savedRole as UserRole;
       }
     } catch {}
@@ -38,7 +39,7 @@ export default function App() {
     return '';
   });
   const [isStaffLoginOpen, setIsStaffLoginOpen] = useState(false);
-  const [staffLoginInitialRole, setStaffLoginInitialRole] = useState<'admin' | 'compounder'>('compounder');
+  const [staffLoginInitialRole, setStaffLoginInitialRole] = useState<'admin' | 'compounder' | 'lab'>('compounder');
   const [userPhoneState, setUserPhoneState] = useState<string>(() => userAuth.getUserPhone());
 
   // Android Hardware Back button & Gesture navigation for Median / Web2App wrapper
@@ -127,7 +128,7 @@ export default function App() {
     realtimeDb.acknowledgeAlarm();
   };
 
-  const handleOpenStaffLogin = (role: 'admin' | 'compounder' = 'compounder') => {
+  const handleOpenStaffLogin = (role: 'admin' | 'compounder' | 'lab' = 'compounder') => {
     setStaffLoginInitialRole(role);
     setIsStaffLoginOpen(true);
   };
@@ -194,6 +195,11 @@ export default function App() {
               initialDoctorName={compounderDoctorName}
               onExit={handleLogoutStaff}
               onDoctorSelected={(name) => setCompounderDoctorName(name)}
+            />
+          ) : currentRole === 'lab' ? (
+            <LabAdminDashboard
+              labTests={labTests}
+              onExit={handleLogoutStaff}
             />
           ) : (
             /* Patient Mobile Tabs */

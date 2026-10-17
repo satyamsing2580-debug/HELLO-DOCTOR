@@ -4,11 +4,14 @@ import {
   CalendarCheck, Clock, CheckCircle, AlertTriangle, XCircle, Stethoscope, 
   MapPin, User, Activity, FlaskConical, Search, Sparkles, Home,
   FileText, Phone, Eye, ShieldCheck, RefreshCw, Banknote, Receipt, Star,
-  Lock, Users, Plus, Shield
+  Lock, Users, Plus, Shield, Printer, Download
 } from 'lucide-react';
 import { userAuth } from '../services/userAuth';
 import { BookingReceiptModal } from './BookingReceiptModal';
 import { PostVisitFeedbackModal } from './PostVisitFeedbackModal';
+import { LabReportViewerModal } from './LabReportViewerModal';
+import { LabOrderPrintModal } from './LabOrderPrintModal';
+import { DoctorProfileModal } from './DoctorProfileModal';
 
 interface Props {
   appointments: Appointment[];
@@ -47,6 +50,9 @@ export const MyBookingsTab: React.FC<Props> = ({
 
   const [selectedPrescriptionPreview, setSelectedPrescriptionPreview] = useState<string | null>(null);
   const [selectedReceiptAppointment, setSelectedReceiptAppointment] = useState<Appointment | null>(null);
+  const [selectedDoctorForProfile, setSelectedDoctorForProfile] = useState<Doctor | null>(null);
+  const [selectedViewLabReport, setSelectedViewLabReport] = useState<LabBooking | null>(null);
+  const [selectedPrintLabBooking, setSelectedPrintLabBooking] = useState<LabBooking | null>(null);
   const [selectedFeedbackBooking, setSelectedFeedbackBooking] = useState<{
     booking?: any;
     serviceType: 'OPD Consultation' | 'Doctor Home Visit' | 'Diagnostic Lab Test' | 'General Clinic Care';
@@ -443,13 +449,13 @@ export const MyBookingsTab: React.FC<Props> = ({
                       ? 'bg-amber-50 text-amber-800 border-b border-amber-100'
                       : apt.status === 'Cancelled'
                       ? 'bg-rose-50 text-rose-800 border-b border-rose-100'
-                      : 'bg-slate-100 text-slate-800 border-b border-slate-200'
+                      : 'bg-emerald-100 text-emerald-950 border-b border-emerald-200'
                   }`}>
                     <div className="flex items-center space-x-1.5">
                       {apt.status === 'Confirmed' && <CheckCircle className="w-4 h-4 text-emerald-600" />}
                       {apt.status === 'Pending' && <Clock className="w-4 h-4 text-amber-600 animate-spin" />}
                       {apt.status === 'Cancelled' && <XCircle className="w-4 h-4 text-rose-600" />}
-                      {apt.status === 'Completed' && <CheckCircle className="w-4 h-4 text-blue-600" />}
+                      {apt.status === 'Completed' && <CheckCircle className="w-4 h-4 text-emerald-700" />}
                       <span>
                         {apt.status === 'Pending' && 'Pending Verification (Admin Assigning Token)'}
                         {apt.status === 'Confirmed' && 'Confirmed - Token Active'}
@@ -466,8 +472,12 @@ export const MyBookingsTab: React.FC<Props> = ({
                   {/* Doctor & Patient Details */}
                   <div className="p-4 space-y-3">
                     <div className="flex items-start justify-between">
-                      <div className="flex items-start space-x-3">
-                        <div className="w-11 h-11 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center text-2xl shrink-0">
+                      <div 
+                        onClick={() => doctor && setSelectedDoctorForProfile(doctor)}
+                        className={`flex items-start space-x-3 ${doctor ? 'cursor-pointer group' : ''}`}
+                        title={doctor ? `View profile and chamber details for ${apt.doctorName}` : undefined}
+                      >
+                        <div className="w-11 h-11 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center text-2xl shrink-0 group-hover:scale-105 transition-transform">
                           {doctor?.emoji || '👨‍⚕️'}
                         </div>
                         <div>
@@ -475,8 +485,8 @@ export const MyBookingsTab: React.FC<Props> = ({
                             <Stethoscope className="w-3.5 h-3.5" />
                             <span>{apt.doctorSpecialty}</span>
                           </div>
-                          <h4 className="font-extrabold text-base text-slate-900 mt-0.5">
-                            {apt.doctorName}
+                          <h4 className="font-extrabold text-base text-slate-900 mt-0.5 group-hover:text-sky-700 transition-colors flex items-center space-x-1">
+                            <span>{apt.doctorName}</span>
                           </h4>
                           <div className="flex items-center space-x-1 text-xs text-slate-500 mt-0.5">
                             <MapPin className="w-3 h-3 text-slate-400" />
@@ -623,6 +633,22 @@ export const MyBookingsTab: React.FC<Props> = ({
                           <Star className="w-3.5 h-3.5 fill-current" />
                           <span>Feedback</span>
                         </button>
+                        {(apt.status === 'Confirmed' || apt.status === 'Completed') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedReceiptAppointment(apt);
+                              setTimeout(() => {
+                                window.print();
+                              }, 350);
+                            }}
+                            className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-[11px] font-bold shadow-xs flex items-center space-x-1 cursor-pointer transition-colors"
+                            title="Direct Print Token Slip"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>Print Slip</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => setSelectedReceiptAppointment(apt)}
@@ -810,13 +836,13 @@ export const MyBookingsTab: React.FC<Props> = ({
                   </div>
                   <div className="text-right">
                     <span className="text-base font-black text-slate-900">₹{booking.price}</span>
-                    <span className={`text-[10px] font-bold block px-2 py-0.5 rounded-full border mt-1 ${
+                    <span className={`text-[10px] font-extrabold block px-2.5 py-0.5 rounded-full border mt-1 ${
                       booking.status === 'Completed'
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
                         : booking.status === 'Report Generated'
-                        ? 'bg-teal-50 text-teal-700 border-teal-200'
+                        ? 'bg-purple-100 text-purple-800 border-purple-200'
                         : booking.status === 'Sample Collected'
-                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                        ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
                         : booking.status === 'Confirmed'
                         ? 'bg-sky-50 text-sky-700 border-sky-200'
                         : booking.status === 'Cancelled'
@@ -828,13 +854,13 @@ export const MyBookingsTab: React.FC<Props> = ({
                   </div>
                 </div>
 
-                <div className="p-2.5 rounded-xl bg-slate-50 text-xs text-slate-600 space-y-1">
+                <div className="p-2.5 rounded-xl bg-slate-50 text-xs text-slate-600 space-y-1.5">
                   <div className="flex justify-between">
                     <span className="text-slate-500">Service Mode:</span>
                     <span className="font-bold text-teal-700">{booking.bookingType}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Scheduled Date & Time:</span>
+                    <span className="text-slate-500">Scheduled Date &amp; Time:</span>
                     <span className="font-semibold text-slate-800">{booking.date} ({booking.timeSlot})</span>
                   </div>
                   {booking.address && (
@@ -844,18 +870,46 @@ export const MyBookingsTab: React.FC<Props> = ({
                     </div>
                   )}
 
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedFeedbackBooking({
-                        booking: booking,
-                        serviceType: 'Diagnostic Lab Test'
-                      })}
-                      className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-xs font-bold flex items-center space-x-1.5 cursor-pointer transition-colors"
-                    >
-                      <Star className="w-3.5 h-3.5 fill-current text-amber-500" />
-                      <span>Rate Diagnostic Experience</span>
-                    </button>
+                  {/* Actions Bar: See Your Report, Order Slip, Feedback */}
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-slate-200/60">
+                    <div className="flex items-center space-x-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPrintLabBooking(booking)}
+                        className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer transition-colors shadow-2xs"
+                        title="Print Lab Order Slip"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Order Slip</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFeedbackBooking({
+                          booking: booking,
+                          serviceType: 'Diagnostic Lab Test'
+                        })}
+                        className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer transition-colors"
+                      >
+                        <Star className="w-3.5 h-3.5 fill-current text-amber-500" />
+                        <span>Feedback</span>
+                      </button>
+                    </div>
+
+                    {(booking.status === 'Report Generated' || booking.status === 'Completed' || booking.reportUrl) ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedViewLabReport(booking)}
+                        className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-xs font-extrabold flex items-center space-x-1.5 shadow-md shadow-purple-600/20 cursor-pointer transition-all animate-pulse"
+                      >
+                        <FileText className="w-4 h-4" />
+                        <span>See Your Report</span>
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 font-medium italic">
+                        Report pending testing
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1041,6 +1095,34 @@ export const MyBookingsTab: React.FC<Props> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Lab Report Viewer Modal ("See Your Report") */}
+      {selectedViewLabReport && (
+        <LabReportViewerModal
+          booking={selectedViewLabReport}
+          onClose={() => setSelectedViewLabReport(null)}
+        />
+      )}
+
+      {/* Lab Order Slip Print Modal */}
+      {selectedPrintLabBooking && (
+        <LabOrderPrintModal
+          booking={selectedPrintLabBooking}
+          onClose={() => setSelectedPrintLabBooking(null)}
+        />
+      )}
+
+      {/* Doctor Profile View Modal */}
+      {selectedDoctorForProfile && (
+        <DoctorProfileModal
+          doctor={selectedDoctorForProfile}
+          onClose={() => setSelectedDoctorForProfile(null)}
+          onBookToken={() => {
+            setSelectedDoctorForProfile(null);
+            onNavigateToHome();
+          }}
+        />
       )}
     </div>
   );

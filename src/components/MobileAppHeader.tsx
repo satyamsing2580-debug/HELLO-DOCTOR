@@ -63,8 +63,14 @@ export const MobileAppHeader: React.FC<Props> = ({
         {/* Action Controls & Role Indicator (Staff login is kept only on Settings Page) */}
         {currentRole !== 'patient' && (
           <div className="flex items-center space-x-1.5">
-            <span className="text-[11px] font-bold px-2 py-1 rounded-md bg-sky-100 text-sky-800 border border-sky-200 max-w-[120px] truncate">
-              {currentRole === 'admin' ? 'Admin Desk' : (compounderDoctorName || 'Compounder')}
+            <span className={`text-[11px] font-bold px-2 py-1 rounded-md border max-w-[130px] truncate ${
+              currentRole === 'admin'
+                ? 'bg-sky-100 text-sky-800 border-sky-200'
+                : currentRole === 'lab'
+                ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                : 'bg-teal-100 text-teal-800 border-teal-200'
+            }`}>
+              {currentRole === 'admin' ? 'Admin Desk' : currentRole === 'lab' ? 'Lab Admin' : (compounderDoctorName || 'Compounder')}
             </span>
             <button
               onClick={onLogoutStaff}

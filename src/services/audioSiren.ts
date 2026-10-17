@@ -86,6 +86,47 @@ class AudioSirenManager {
   public getIsPlaying(): boolean {
     return this.isPlaying;
   }
+
+  /**
+   * Dedicated Notification Sound (Beep) for new Lab Orders
+   * Plays a crisp, authentic dual-tone hospital alert chime.
+   */
+  public playLabBeep() {
+    try {
+      const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtxClass) return;
+      const ctx = new AudioCtxClass();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      // Dual tone beep: 880Hz then 1046.5Hz
+      const now = ctx.currentTime;
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.setValueAtTime(1174.66, now + 0.12);
+
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(now + 0.38);
+
+      setTimeout(() => {
+        try {
+          ctx.close();
+        } catch {}
+      }, 600);
+    } catch (e) {
+      console.warn('Lab notification beep audio issue:', e);
+    }
+  }
 }
 
 export const sirenManager = new AudioSirenManager();

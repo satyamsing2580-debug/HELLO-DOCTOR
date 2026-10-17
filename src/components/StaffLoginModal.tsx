@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Lock, AlertCircle, KeyRound, UserCheck, Stethoscope, Search, Check } from 'lucide-react';
+import { X, ShieldCheck, Lock, AlertCircle, KeyRound, UserCheck, Stethoscope, Search, Check, FlaskConical } from 'lucide-react';
 import { UserRole, Doctor } from '../types';
-import { verifyAdminCredential, verifyDoctorCompounderCredential, verifyCompounderCredential } from '../services/realtimeDb';
+import { verifyAdminCredential, verifyDoctorCompounderCredential, verifyCompounderCredential, verifyLabCredential } from '../services/realtimeDb';
 
 interface Props {
   doctors: Doctor[];
   onClose: () => void;
   onLoginSuccess: (role: UserRole, doctorName?: string) => void;
-  initialRole?: 'admin' | 'compounder';
+  initialRole?: 'admin' | 'compounder' | 'lab';
 }
 
 export const StaffLoginModal: React.FC<Props> = ({ 
@@ -16,10 +16,13 @@ export const StaffLoginModal: React.FC<Props> = ({
   onLoginSuccess,
   initialRole = 'compounder'
 }) => {
-  const [selectedRole, setSelectedRole] = useState<'admin' | 'compounder'>(initialRole);
+  const [selectedRole, setSelectedRole] = useState<'admin' | 'compounder' | 'lab'>(initialRole);
   
   // Super Admin Password
   const [adminPassword, setAdminPassword] = useState('');
+
+  // Lab Admin Password (Password: Lab1616)
+  const [labPassword, setLabPassword] = useState('');
   
   // Compounder Flow
   // Phase 1: Enter Compounder Admin Password (90073555062)
@@ -66,6 +69,32 @@ export const StaffLoginModal: React.FC<Props> = ({
       onLoginSuccess('admin');
     } else {
       setErrorMessage('Authentication Failed: Invalid Super Admin password.');
+    }
+  };
+
+  // Dedicated Lab Admin Login Handler (Password: Lab1616)
+  const handleLabSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage('');
+
+    if (!labPassword.trim()) {
+      setErrorMessage('Please enter the Lab Admin security password.');
+      return;
+    }
+
+    const isValid = verifyLabCredential(labPassword);
+    if (isValid) {
+      if (rememberMe) {
+        try {
+          localStorage.setItem('hd_staff_role', 'lab');
+        } catch {}
+      }
+      try {
+        sessionStorage.setItem('hd_staff_role', 'lab');
+      } catch {}
+      onLoginSuccess('lab');
+    } else {
+      setErrorMessage('Authentication Failed: Invalid password. Please enter correct Lab Admin password (Lab1616).');
     }
   };
 
@@ -158,25 +187,41 @@ export const StaffLoginModal: React.FC<Props> = ({
         </div>
 
         {/* Role Toggle */}
-        <div className="p-3.5 bg-slate-50 border-b border-slate-200/80">
+        <div className="p-3 bg-slate-50 border-b border-slate-200/80">
           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
             Select Staff Portal Role
           </label>
-          <div className="grid grid-cols-2 gap-1.5 bg-slate-200/70 p-1 rounded-xl">
+          <div className="grid grid-cols-3 gap-1 bg-slate-200/70 p-1 rounded-xl">
             <button
               type="button"
               onClick={() => {
                 setSelectedRole('compounder');
                 setErrorMessage('');
               }}
-              className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center space-x-1.5 ${
+              className={`py-1.5 px-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-center space-x-1 ${
                 selectedRole === 'compounder'
                   ? 'bg-teal-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <UserCheck className="w-3.5 h-3.5" />
-              <span>Doctor Compounder</span>
+              <span className="truncate">Compounder</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedRole('lab');
+                setErrorMessage('');
+              }}
+              className={`py-1.5 px-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-center space-x-1 ${
+                selectedRole === 'lab'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <FlaskConical className="w-3.5 h-3.5" />
+              <span className="truncate">Lab Admin</span>
             </button>
 
             <button
@@ -185,14 +230,14 @@ export const StaffLoginModal: React.FC<Props> = ({
                 setSelectedRole('admin');
                 setErrorMessage('');
               }}
-              className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center space-x-1.5 ${
+              className={`py-1.5 px-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-center space-x-1 ${
                 selectedRole === 'admin'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <KeyRound className="w-3.5 h-3.5 text-sky-600" />
-              <span>Super Admin</span>
+              <span className="truncate">Admin</span>
             </button>
           </div>
         </div>
@@ -204,6 +249,63 @@ export const StaffLoginModal: React.FC<Props> = ({
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span className="font-medium">{errorMessage}</span>
             </div>
+          )}
+
+          {/* DEDICATED LAB ADMIN FLOW (Password: Lab1616) */}
+          {selectedRole === 'lab' && (
+            <form onSubmit={handleLabSubmit} className="space-y-4 animate-in fade-in duration-150">
+              <div className="p-3 bg-indigo-50/80 border border-indigo-100 rounded-2xl flex items-start space-x-2.5">
+                <FlaskConical className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-indigo-950 text-xs">Diagnostic Lab Admin Portal</h4>
+                  <p className="text-[11px] text-indigo-800 leading-relaxed font-medium mt-0.5">
+                    Authorized pathology portal to view real-time lab test bookings, receive audio alerts, print sample slips, and upload patient reports.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Lab Admin Password *
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                  <input
+                    type="password"
+                    required
+                    autoFocus
+                    autoComplete="off"
+                    value={labPassword}
+                    onChange={(e) => setLabPassword(e.target.value)}
+                    placeholder="Enter Lab Admin security password"
+                    className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="labRemember"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                />
+                <label htmlFor="labRemember" className="text-xs text-slate-600 font-medium cursor-pointer">
+                  Remember my session on this device
+                </label>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-gradient-to-r from-indigo-600 to-teal-600 hover:from-indigo-700 hover:to-teal-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                >
+                  <FlaskConical className="w-4 h-4" />
+                  <span>Access Lab Admin Dashboard</span>
+                </button>
+              </div>
+            </form>
           )}
 
           {/* SUPER ADMIN FLOW */}
@@ -362,6 +464,7 @@ export const StaffLoginModal: React.FC<Props> = ({
                             key={doc.id}
                             onClick={() => {
                               setSelectedDoctorId(doc.id);
+                              setDoctorPassword('');
                               setErrorMessage('');
                             }}
                             className={`w-full p-2 rounded-xl flex items-center justify-between text-left transition-all cursor-pointer ${
@@ -407,6 +510,7 @@ export const StaffLoginModal: React.FC<Props> = ({
                           type="password"
                           required
                           autoFocus
+                          autoComplete="new-password"
                           value={doctorPassword}
                           onChange={(e) => setDoctorPassword(e.target.value)}
                           placeholder="Enter security password"

@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { 
   Phone, Shield, FileText, PhoneCall, MapPin, ShieldCheck, 
-  ChevronRight, X, Siren, CalendarCheck, Sparkles, AlertCircle, Info, Heart, Mail, MessageSquare, Star
+  ChevronRight, X, Siren, CalendarCheck, Sparkles, AlertCircle, Info, Heart, Mail, MessageSquare, Star,
+  FlaskConical
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { PostVisitFeedbackModal } from './PostVisitFeedbackModal';
 
 interface Props {
   appSettings?: AppSettings;
-  onOpenStaffLogin: (initialRole?: 'admin' | 'compounder') => void;
+  onOpenStaffLogin: (initialRole?: 'admin' | 'compounder' | 'lab') => void;
 }
 
 export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) => {
@@ -314,6 +315,17 @@ export const SettingsTab: React.FC<Props> = ({ appSettings, onOpenStaffLogin }) 
               <span>Doctor Compounder Login</span>
             </div>
             <ChevronRight className="w-4 h-4 text-teal-200" />
+          </button>
+
+          <button
+            onClick={() => onOpenStaffLogin('lab')}
+            className="w-full py-2.5 px-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-between cursor-pointer"
+          >
+            <div className="flex items-center space-x-2">
+              <FlaskConical className="w-4 h-4 text-indigo-200" />
+              <span>Dedicated Lab Admin Portal (Lab1616)</span>
+            </div>
+            <ChevronRight className="w-4 h-4 text-indigo-200" />
           </button>
 
           <button

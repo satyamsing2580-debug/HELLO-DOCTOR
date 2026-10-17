@@ -9,12 +9,14 @@ import {
   PlusCircle, Edit3, Trash2, BellRing, VolumeX, ShieldAlert,
   ArrowUpRight, Stethoscope, Search, RefreshCw, Home,
   DollarSign, Sliders, Eye, Save, Phone, MapPin, Check,
-  FlaskConical, ClipboardList, Sparkles, Tag, CheckCircle, Star, MessageSquare, KeyRound
+  FlaskConical, ClipboardList, Sparkles, Tag, CheckCircle, Star, MessageSquare, KeyRound,
+  Printer
 } from 'lucide-react';
 import { AdminUserManagement } from './admin/AdminUserManagement';
 import { AdminBannersCMS } from './admin/AdminBannersCMS';
 import { AdminCouponsCMS } from './admin/AdminCouponsCMS';
 import { DoctorPasswordModal } from './admin/DoctorPasswordModal';
+import { BookingReceiptModal } from './BookingReceiptModal';
 
 interface Props {
   doctors: Doctor[];
@@ -41,6 +43,7 @@ export const GroupAdminDashboard: React.FC<Props> = ({
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'verification' | 'home_visits' | 'lab_orders' | 'lab_tests' | 'users' | 'banners' | 'coupons' | 'feedbacks' | 'pricing' | 'doctors' | 'financial'>('verification');
   const [appointmentFilter, setAppointmentFilter] = useState<'pending' | 'all' | 'confirmed' | 'cancelled'>('pending');
+  const [selectedAppointmentForPrint, setSelectedAppointmentForPrint] = useState<Appointment | null>(null);
   const [doctorToEdit, setDoctorToEdit] = useState<Doctor | null>(null);
   const [doctorForPasswordModal, setDoctorForPasswordModal] = useState<Doctor | null>(null);
   const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
@@ -571,12 +574,12 @@ export const GroupAdminDashboard: React.FC<Props> = ({
                     <div className="flex items-start justify-between">
                       <div>
                         <div className="flex items-center space-x-2">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                            apt.status === 'Confirmed'
-                              ? 'bg-emerald-100 text-emerald-800'
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                            apt.status === 'Confirmed' || apt.status === 'Completed'
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
                               : apt.status === 'Pending'
-                              ? 'bg-amber-100 text-amber-800 animate-pulse'
-                              : 'bg-rose-100 text-rose-800'
+                              ? 'bg-amber-100 text-amber-800 border-amber-200 animate-pulse'
+                              : 'bg-rose-100 text-rose-800 border-rose-200'
                           }`}>
                             {apt.status}
                           </span>
@@ -675,19 +678,34 @@ export const GroupAdminDashboard: React.FC<Props> = ({
                       </div>
                     )}
 
-                    {/* For already confirmed: Display assigned token with option to cancel or mark completed */}
-                    {apt.status === 'Confirmed' && (
+                    {/* For already confirmed or completed: Display assigned token with Print Slip button */}
+                    {(apt.status === 'Confirmed' || apt.status === 'Completed') && (
                       <div className="flex items-center justify-between pt-1 text-xs">
-                        <span className="font-extrabold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                          Active Token: #{apt.tokenNumber}
+                        <span className={`font-extrabold px-2.5 py-1 rounded-lg border ${
+                          apt.status === 'Completed'
+                            ? 'text-emerald-900 bg-emerald-100 border-emerald-300'
+                            : 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                        }`}>
+                          Token #{apt.tokenNumber} {apt.status === 'Completed' ? '• Completed' : '• Active'}
                         </span>
-                        <div className="space-x-1.5">
+                        <div className="flex items-center space-x-1.5">
                           <button
-                            onClick={() => handleCancel(apt.id)}
-                            className="px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 rounded-lg border border-rose-200 cursor-pointer"
+                            type="button"
+                            onClick={() => setSelectedAppointmentForPrint(apt)}
+                            className="px-2.5 py-1 text-[11px] font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs flex items-center space-x-1 cursor-pointer transition-colors"
+                            title="Print Token Slip"
                           >
-                            Cancel Slot
+                            <Printer className="w-3 h-3 text-slate-500" />
+                            <span>Print Slip</span>
                           </button>
+                          {apt.status === 'Confirmed' && (
+                            <button
+                              onClick={() => handleCancel(apt.id)}
+                              className="px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 rounded-lg border border-rose-200 cursor-pointer"
+                            >
+                              Cancel Slot
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1850,6 +1868,15 @@ export const GroupAdminDashboard: React.FC<Props> = ({
             />
           </div>
         </div>
+      )}
+
+      {/* Printable OPD Token Receipt Modal */}
+      {selectedAppointmentForPrint && (
+        <BookingReceiptModal
+          appointment={selectedAppointmentForPrint}
+          onClose={() => setSelectedAppointmentForPrint(null)}
+          onViewMyBookings={() => setSelectedAppointmentForPrint(null)}
+        />
       )}
     </div>
   );

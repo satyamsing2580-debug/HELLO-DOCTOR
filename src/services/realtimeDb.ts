@@ -13,6 +13,7 @@ import { userAuth } from './userAuth';
 // Secure credentials kept strictly within authentication logic
 const ADMIN_SECURITY_HASH = '97712647845';
 const COMPOUNDER_SECURITY_HASH = '90073555062';
+const LAB_SECURITY_HASH = 'Lab1616';
 
 export const verifyAdminCredential = (pass: string): boolean => {
   return pass.trim() === ADMIN_SECURITY_HASH;
@@ -21,6 +22,11 @@ export const verifyAdminCredential = (pass: string): boolean => {
 // Global fallback compounder credential
 export const verifyCompounderCredential = (pass: string): boolean => {
   return pass.trim() === COMPOUNDER_SECURITY_HASH;
+};
+
+// Dedicated Lab Admin credential verification (Password: Lab1616)
+export const verifyLabCredential = (pass: string): boolean => {
+  return pass.trim() === LAB_SECURITY_HASH || pass.trim().toLowerCase() === 'lab1616';
 };
 
 // Doctor-specific compounder credential verification
@@ -1467,25 +1473,48 @@ class HelloDoctorRealtimeDB {
       console.warn('callNextToken sync notice:', e);
     }
 
-    // Mark appointment as Completed if patient with this token exists
-    const matchingApt = this.appointments.find(
-      a => a.doctorId === doctorId && a.tokenNumber === nextToken && a.status === 'Confirmed'
+    // Mark appointments whose consultation has finished (tokens before nextToken) as 'Completed'
+    const completedApts = this.appointments.filter(
+      a => a.doctorId === doctorId && a.tokenNumber < nextToken && a.status === 'Confirmed'
     );
-    if (matchingApt) {
-      matchingApt.status = 'Completed';
+    if (completedApts.length > 0) {
+      completedApts.forEach(a => {
+        a.status = 'Completed';
+      });
       this.saveToStorage();
       this.appointmentListeners.forEach(cb => cb([...this.appointments]));
-      try {
-        await setDoc(doc(db, 'appointments', matchingApt.id), cleanDataForFirestore({
-          ...matchingApt,
-          status: 'Completed'
-        }), { merge: true });
-      } catch (e) {
-        console.warn('complete appointment sync notice:', e);
+      
+      for (const apt of completedApts) {
+        try {
+          await setDoc(doc(db, 'appointments', apt.id), cleanDataForFirestore({
+            ...apt,
+            status: 'Completed'
+          }), { merge: true });
+        } catch (e) {
+          console.warn('complete appointment sync notice:', e);
+        }
       }
     }
 
     return nextToken;
+  }
+
+  public async markAppointmentCompleted(appointmentId: string): Promise<void> {
+    const apt = this.appointments.find(a => a.id === appointmentId);
+    if (!apt) return;
+
+    apt.status = 'Completed';
+    this.saveToStorage();
+    this.appointmentListeners.forEach(cb => cb([...this.appointments]));
+
+    try {
+      await setDoc(doc(db, 'appointments', appointmentId), cleanDataForFirestore({
+        ...apt,
+        status: 'Completed'
+      }), { merge: true });
+    } catch (e) {
+      console.warn('markAppointmentCompleted sync notice:', e);
+    }
   }
 
   public async skipToken(doctorId: string): Promise<number> {
@@ -1910,7 +1939,7 @@ class HelloDoctorRealtimeDB {
     }
   }
 
-  // Lab Booking Fulfillment & Status Management (Clinic Staff / Admin)
+  // Lab Booking Fulfillment & Status Management (Clinic Staff / Admin / Lab Staff)
   public async updateLabBookingStatus(bookingId: string, status: LabBooking['status']): Promise<void> {
     const booking = this.labBookings.find(b => b.id === bookingId);
     if (booking) {
@@ -1929,12 +1958,48 @@ class HelloDoctorRealtimeDB {
     }
   }
 
+  // Upload or Send Diagnostic Report for Patient
+  public async uploadLabReport(
+    bookingId: string,
+    reportData: {
+      reportUrl: string;
+      reportFileName?: string;
+      reportNotes?: string;
+    }
+  ): Promise<void> {
+    const booking = this.labBookings.find(b => b.id === bookingId);
+    if (booking) {
+      booking.reportUrl = reportData.reportUrl;
+      booking.reportFileName = reportData.reportFileName || 'Diagnostic_Test_Report.pdf';
+      booking.reportNotes = reportData.reportNotes || '';
+      booking.reportUploadedAt = Date.now();
+      booking.status = 'Report Generated';
+      this.saveToStorage();
+      this.labBookingListeners.forEach(cb => cb([...this.labBookings]));
+    }
+
+    try {
+      await setDoc(doc(db, 'lab_bookings', bookingId), cleanDataForFirestore({
+        ...(booking || {}),
+        reportUrl: reportData.reportUrl,
+        reportFileName: reportData.reportFileName || 'Diagnostic_Test_Report.pdf',
+        reportNotes: reportData.reportNotes || '',
+        reportUploadedAt: Date.now(),
+        status: 'Report Generated'
+      }), { merge: true });
+    } catch (e) {
+      console.warn('Firestore upload lab report notice:', e);
+    }
+  }
+
   public async bookLabTest(data: {
     userId?: string;
     testId: string;
     bookingType: 'Home Sample Collection' | 'Visit Lab';
     patientName: string;
     patientPhone: string;
+    patientAge?: number | string;
+    patientGender?: 'Male' | 'Female' | 'Other';
     address?: string;
     date: string;
     timeSlot: string;
@@ -1958,6 +2023,8 @@ class HelloDoctorRealtimeDB {
       bookingType: data.bookingType,
       patientName: data.patientName.trim(),
       patientPhone: data.patientPhone.trim(),
+      patientAge: data.patientAge,
+      patientGender: data.patientGender,
       address: data.address?.trim() || '',
       date: data.date,
       timeSlot: data.timeSlot,
